@@ -48,6 +48,7 @@ from core import (
 from entities import TopicResolver, default_resolver, normalize_text
 from features import acceleration, summarize_signals, velocity
 from gsc import GSCProvider, aggregate_gsc_topic_signals
+from keyword_planner import KeywordPlannerProvider, aggregate_keyword_planner_signals
 from opportunity import score_opportunity
 from web import WebsiteProvider, fetch_text, parse_feed
 
@@ -699,6 +700,11 @@ def run_pipeline(
     gsc_site_url: str | None = None,
     gsc_access_token: str | None = None,
     gsc_query_filter: str | None = None,
+    google_ads_customer_id: str | None = None,
+    google_ads_access_token: str | None = None,
+    google_ads_login_customer_id: str | None = None,
+    google_ads_geo_target: str = "2840",
+    google_ads_language: str = "1000",
     hydrate_content: bool = False,
     content_max_pages: int = 20,
     content_snapshot_path: str = ".radar/page-snapshots.jsonl",
@@ -727,6 +733,9 @@ def run_pipeline(
         registered_ids.add("website")
     if gsc_site_url and "gsc" not in registered_ids:
         registry.register(GSCProvider())
+        registered_ids.add("gsc")
+    if google_ads_customer_id and "keyword_planner" not in registered_ids:
+        registry.register(KeywordPlannerProvider())
 
     def collect(provider: DataProvider) -> CollectionResult:
         provider_request = request
@@ -744,6 +753,19 @@ def run_pipeline(
                     "site_url": gsc_site_url,
                     "access_token": gsc_access_token,
                     "query_filter": gsc_query_filter or topic,
+                },
+            )
+        elif provider.id == "keyword_planner":
+            provider_request = CollectionRequest(
+                topic=topic,
+                limit=limit,
+                metadata={
+                    "customer_id": google_ads_customer_id,
+                    "access_token": google_ads_access_token,
+                    "login_customer_id": google_ads_login_customer_id,
+                    "geo_target": google_ads_geo_target,
+                    "language_constant": google_ads_language,
+                    "keywords": [topic],
                 },
             )
 
@@ -790,7 +812,7 @@ def run_pipeline(
     signals = [
         event_to_signal(event, topic_node.id, resolver)
         for event in all_events
-        if event.provider != "gsc"
+        if event.provider not in {"gsc", "keyword_planner"}
     ]
 
     gsc_events = [event for event in all_events if event.provider == "gsc"]
@@ -798,6 +820,19 @@ def run_pipeline(
         signals.extend(
             aggregate_gsc_topic_signals(
                 gsc_events,
+                topic_id=topic_node.id,
+                query_terms=[topic_node.name, *sorted(topic_node.aliases)],
+            )
+        )
+
+    keyword_events = [
+        event for event in all_events
+        if event.provider == "keyword_planner"
+    ]
+    if keyword_events:
+        signals.extend(
+            aggregate_keyword_planner_signals(
+                keyword_events,
                 topic_id=topic_node.id,
                 query_terms=[topic_node.name, *sorted(topic_node.aliases)],
             )
@@ -839,7 +874,7 @@ def run_pipeline(
             provider_ids=[
                 result.provider
                 for result in results
-                if result.provider != "gsc"
+                if result.provider not in {"gsc", "keyword_planner"}
             ],
         )
     )
@@ -888,6 +923,16 @@ def main() -> int:
     parser.add_argument("--gsc-site", help="Optional Search Console property, e.g. sc-domain:example.com")
     parser.add_argument("--gsc-query-filter", help="Optional GSC query contains filter; defaults to topic")
     parser.add_argument(
+        "--google-ads-customer",
+        help="Optional Google Ads customer ID for Keyword Planner historical metrics",
+    )
+    parser.add_argument(
+        "--google-ads-login-customer",
+        help="Optional Google Ads manager/login customer ID",
+    )
+    parser.add_argument("--google-ads-geo-target", default="2840")
+    parser.add_argument("--google-ads-language", default="1000")
+    parser.add_argument(
         "--hydrate-content",
         action="store_true",
         help="Hydrate top GSC ranking pages and compute deterministic Supply Gap evidence",
@@ -906,6 +951,11 @@ def main() -> int:
         gsc_site_url=args.gsc_site,
         gsc_access_token=os.getenv("GSC_ACCESS_TOKEN"),
         gsc_query_filter=args.gsc_query_filter,
+        google_ads_customer_id=args.google_ads_customer,
+        google_ads_access_token=os.getenv("GOOGLE_ADS_ACCESS_TOKEN"),
+        google_ads_login_customer_id=args.google_ads_login_customer,
+        google_ads_geo_target=args.google_ads_geo_target,
+        google_ads_language=args.google_ads_language,
         hydrate_content=args.hydrate_content,
         content_max_pages=max(1, min(args.content_max_pages, 100)),
         content_snapshot_path=args.content_snapshot_path,
