@@ -51,6 +51,17 @@ def build_wechat_research_pack(
     audience: str,
     objective: str,
 ) -> dict[str, Any]:
+    if radar_pack.get("schema_version") != "research-pack-v1":
+        raise ValueError("input must be a Radar research-pack-v1 artifact")
+    topic = str(radar_pack.get("topic") or "").strip()
+    if not topic:
+        raise ValueError("Radar research pack topic is required")
+    guardrails = radar_pack.get("guardrails") or {}
+    if guardrails.get("facts_require_citation_ids") is not True:
+        raise ValueError(
+            "Radar research pack must require citation IDs for factual claims"
+        )
+
     audience = audience.strip()
     objective = objective.strip()
     if not audience:
@@ -158,7 +169,7 @@ def build_wechat_research_pack(
     )
 
     return {
-        "topic": str(radar_pack.get("topic") or "").strip(),
+        "topic": topic,
         "as_of": as_of,
         "audience": audience,
         "objective": objective,
