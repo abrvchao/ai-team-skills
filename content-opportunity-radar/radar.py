@@ -131,6 +131,11 @@ def _candidate_scan(
     website: str | None,
     gsc_site_url: str | None,
     gsc_access_token: str | None,
+    google_ads_customer_id: str | None,
+    google_ads_access_token: str | None,
+    google_ads_login_customer_id: str | None,
+    google_ads_geo_target: str,
+    google_ads_language: str,
     hydrate_content: bool,
     content_max_pages: int,
     content_snapshot_path: str,
@@ -144,6 +149,11 @@ def _candidate_scan(
         gsc_site_url=gsc_site_url,
         gsc_access_token=gsc_access_token,
         gsc_query_filter=candidate.name,
+        google_ads_customer_id=google_ads_customer_id,
+        google_ads_access_token=google_ads_access_token,
+        google_ads_login_customer_id=google_ads_login_customer_id,
+        google_ads_geo_target=google_ads_geo_target,
+        google_ads_language=google_ads_language,
         hydrate_content=hydrate_content,
         content_max_pages=content_max_pages,
         content_snapshot_path=content_snapshot_path,
@@ -198,6 +208,11 @@ def run_discovery(
     website: str | None = None,
     gsc_site_url: str | None = None,
     gsc_access_token: str | None = None,
+    google_ads_customer_id: str | None = None,
+    google_ads_access_token: str | None = None,
+    google_ads_login_customer_id: str | None = None,
+    google_ads_geo_target: str = "2840",
+    google_ads_language: str = "1000",
     hydrate_content: bool = False,
     content_max_pages: int = 20,
     content_snapshot_path: str = ".radar/page-snapshots.jsonl",
@@ -234,6 +249,11 @@ def run_discovery(
                     website=website,
                     gsc_site_url=gsc_site_url,
                     gsc_access_token=gsc_access_token,
+                    google_ads_customer_id=google_ads_customer_id,
+                    google_ads_access_token=google_ads_access_token,
+                    google_ads_login_customer_id=google_ads_login_customer_id,
+                    google_ads_geo_target=google_ads_geo_target,
+                    google_ads_language=google_ads_language,
                     hydrate_content=hydrate_content,
                     content_max_pages=max(1, min(content_max_pages, 100)),
                     content_snapshot_path=content_snapshot_path,
@@ -277,6 +297,10 @@ def main() -> int:
     parser.add_argument("--cache-path", default=".radar/provider-cache.json")
     parser.add_argument("--website")
     parser.add_argument("--gsc-site")
+    parser.add_argument("--google-ads-customer")
+    parser.add_argument("--google-ads-login-customer")
+    parser.add_argument("--google-ads-geo-target", default="2840")
+    parser.add_argument("--google-ads-language", default="1000")
     parser.add_argument("--hydrate-content", action="store_true")
     parser.add_argument("--content-max-pages", type=int, default=20)
     parser.add_argument("--content-snapshot-path", default=".radar/page-snapshots.jsonl")
@@ -294,6 +318,11 @@ def main() -> int:
         website=args.website,
         gsc_site_url=args.gsc_site,
         gsc_access_token=os.getenv("GSC_ACCESS_TOKEN"),
+        google_ads_customer_id=args.google_ads_customer,
+        google_ads_access_token=os.getenv("GOOGLE_ADS_ACCESS_TOKEN"),
+        google_ads_login_customer_id=args.google_ads_login_customer,
+        google_ads_geo_target=args.google_ads_geo_target,
+        google_ads_language=args.google_ads_language,
         hydrate_content=args.hydrate_content,
         content_max_pages=args.content_max_pages,
         content_snapshot_path=args.content_snapshot_path,
