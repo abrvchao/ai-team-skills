@@ -72,6 +72,23 @@ class StaticProvider(DataProvider):
         )
 
 
+class StoredGitHubProvider(DataProvider):
+    id = "github"
+
+    def collect(self, request):
+        item = make_event(12.0)
+        item.id = "stored-github-1"
+        item.provider = self.id
+        item.source = "github.com"
+        item.title = "Context engineering patterns for AI agents"
+        item.raw = {"kind": "repository", "topics": ["context-engineering"]}
+        return CollectionResult(
+            provider=self.id,
+            status=ProviderState.HEALTHY,
+            events=[item],
+        )
+
+
 class FailingProvider(DataProvider):
     id = "failing"
     retry_attempts = 1
@@ -407,6 +424,52 @@ class CollectorTests(unittest.TestCase):
             )
             self.assertNotIn("access_token", captured)
             self.assertNotIn(b"MISSING_TOKEN", db.read_bytes())
+
+    def test_recent_events_round_trip_from_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "radar.db"
+            clock = Clock()
+            service = CollectionService(
+                config(db, [job("github-seed", "github")]),
+                provider_factories={"github": StoredGitHubProvider},
+                now_fn=clock,
+            )
+            service.run_once(force=True)
+
+            with RadarStore(db) as store:
+                rows = store.recent_events(
+                    since=START - timedelta(hours=1),
+                    providers=["github"],
+                )
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].id, "stored-github-1")
+            self.assertEqual(rows[0].provider, "github")
+            self.assertEqual(rows[0].metrics["score"], 12.0)
+            self.assertEqual(rows[0].raw["topics"], ["context-engineering"])
+
+    def test_radar_seed_uses_store_without_live_broad_collection(self):
+        from radar import collect_seed_events
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "radar.db"
+            clock = Clock()
+            service = CollectionService(
+                config(db, [job("github-seed", "github")]),
+                provider_factories={"github": StoredGitHubProvider},
+                now_fn=clock,
+            )
+            service.run_once(force=True)
+
+            seed = collect_seed_events(
+                scope="AI",
+                collector_db=str(db),
+                collector_since_hours=24,
+                providers=[FailingProvider()],
+            )
+            self.assertEqual(seed.source_mode, "collector_store")
+            self.assertEqual(len(seed.events), 1)
+            self.assertEqual(seed.events[0].id, "stored-github-1")
+            self.assertEqual(seed.providers["github"]["status"], "stored")
 
     def test_disabled_job_is_not_executed(self):
         with tempfile.TemporaryDirectory() as tmp:
