@@ -591,6 +591,66 @@ class RadarStore:
         )
         self.conn.commit()
 
+    def recent_events(
+        self,
+        *,
+        since: datetime,
+        providers: Sequence[str] | None = None,
+        limit: int = 5000,
+    ) -> list[RawEvent]:
+        """Return latest deduped events observed since a cutoff.
+
+        This is intentionally a latest-state event view. Historical metric
+        movement remains in event_observations / metric_snapshots.
+        """
+        params: list[Any] = [isoformat(since)]
+        where = ["last_seen_at >= ?"]
+        if providers:
+            placeholders = ",".join("?" for _ in providers)
+            where.append(f"provider IN ({placeholders})")
+            params.extend(providers)
+        params.append(max(1, min(int(limit), 50000)))
+
+        rows = self.conn.execute(
+            f"""
+            SELECT * FROM raw_events
+            WHERE {' AND '.join(where)}
+            ORDER BY last_seen_at DESC, id ASC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+
+        events: list[RawEvent] = []
+        for row in rows:
+            try:
+                events.append(
+                    RawEvent.from_dict({
+                        "id": row["id"],
+                        "provider": row["provider"],
+                        "source": row["source"],
+                        "acquisition_method": row["acquisition_method"],
+                        "retrieved_at": row["last_seen_at"],
+                        "external_id": row["external_id"],
+                        "url": row["url"],
+                        "title": row["title"],
+                        "text": row["text"],
+                        "author": row["author"],
+                        "community": row["community"],
+                        "published_at": row["published_at"],
+                        "language": row["language"],
+                        "country": row["country"],
+                        "metrics": json.loads(row["metrics_json"] or "{}"),
+                        "raw": json.loads(row["raw_json"] or "null"),
+                        "provenance": json.loads(
+                            row["provenance_json"] or "{}"
+                        ),
+                    })
+                )
+            except Exception:
+                continue
+        return events
+
     def counts(self) -> dict[str, int]:
         names = (
             "raw_events",
