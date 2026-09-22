@@ -27,6 +27,7 @@ from core import (
     CollectionRequest,
     CollectionResult,
     DataProvider,
+    EventCache,
     MetricSnapshot,
     ProviderRegistry,
     ProviderState,
