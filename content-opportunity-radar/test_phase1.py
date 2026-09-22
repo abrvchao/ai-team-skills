@@ -8,7 +8,9 @@ from pathlib import Path
 from core import (
     AcquisitionMethod,
     CollectionRequest,
+    CollectionResult,
     DataProvider,
+    EventCache,
     MetricSnapshot,
     ProviderRegistry,
     ProviderState,
@@ -44,9 +46,25 @@ def signal(provider: str, value: float, *, kind: str = "momentum", evidence: str
 
 class BrokenProvider(DataProvider):
     id = "broken"
+    retry_attempts = 1
 
     def collect(self, request: CollectionRequest):
         raise RuntimeError("boom")
+
+
+class FlakyProvider(DataProvider):
+    id = "flaky"
+    retry_attempts = 2
+    retry_backoff_seconds = 0
+
+    def __init__(self):
+        self.calls = 0
+
+    def collect(self, request: CollectionRequest):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("transient")
+        return CollectionResult(provider=self.id, status=ProviderState.HEALTHY)
 
 
 class Phase1Tests(unittest.TestCase):
@@ -91,6 +109,39 @@ class Phase1Tests(unittest.TestCase):
         self.assertEqual(result.status, ProviderState.FAILED)
         self.assertEqual(result.events, [])
         self.assertIn("RuntimeError", result.warnings[0])
+
+    def test_provider_retry_recovers_from_transient_failure(self):
+        registry = ProviderRegistry()
+        provider = FlakyProvider()
+        result = registry.safe_collect(provider, CollectionRequest(topic="AI Agents"))
+        self.assertEqual(result.status, ProviderState.HEALTHY)
+        self.assertEqual(provider.calls, 2)
+
+    def test_event_cache_round_trip_preserves_provenance_and_kind(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = EventCache(Path(tmp) / "provider-cache.json")
+            event = RawEvent(
+                id="repo-1",
+                provider="github",
+                source="github.com",
+                acquisition_method=AcquisitionMethod.OFFICIAL_API,
+                retrieved_at=NOW,
+                external_id="1",
+                title="owner/repo",
+                metrics={"stars": 10},
+                raw={"kind": "repository"},
+                provenance=Provenance(
+                    terms_class="official_api",
+                    api_version="2022-11-28",
+                    endpoint="GET /search/repositories",
+                ),
+            )
+            cache.save("github", "AI Agents", [event])
+            rows = cache.load("github", "AI Agents")
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].raw["kind"], "repository")
+            self.assertEqual(rows[0].metrics["stars"], 10.0)
+            self.assertEqual(rows[0].provenance.terms_class, "official_api")
 
     def test_short_interval_does_not_manufacture_historical_momentum(self):
         store = SnapshotStore()
