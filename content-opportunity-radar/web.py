@@ -171,6 +171,23 @@ def parse_sitemap(xml_text: str, limit: int = 100) -> list[dict[str, Any]]:
     return rows
 
 
+def parse_sitemap_index(xml_text: str, limit: int = 10) -> list[str]:
+    root = ET.fromstring(xml_text)
+    rows: list[str] = []
+    for node in root.iter():
+        if _local_name(node.tag) != "sitemap":
+            continue
+        for child in list(node):
+            if _local_name(child.tag) == "loc":
+                loc = (child.text or "").strip()
+                if loc:
+                    rows.append(loc)
+                    break
+        if len(rows) >= limit:
+            break
+    return rows
+
+
 def _looks_like_feed(response: FetchResponse) -> bool:
     sample = response.text[:4000].lower()
     ctype = response.content_type.lower()
@@ -276,6 +293,19 @@ class WebsiteProvider(DataProvider):
             method = AcquisitionMethod.ATOM if discovered["type"] == "atom" else AcquisitionMethod.RSS
         elif discovered["type"] == "sitemap":
             rows = parse_sitemap(response.text, request.limit)
+            if not rows and "<sitemapindex" in response.text[:4000].lower():
+                rows = []
+                for child_url in parse_sitemap_index(response.text, limit=5):
+                    try:
+                        child = fetch_text(
+                            child_url,
+                            accept="application/xml,text/xml,*/*;q=0.5",
+                        )
+                        rows.extend(parse_sitemap(child.text, request.limit - len(rows)))
+                    except Exception:
+                        continue
+                    if len(rows) >= request.limit:
+                        break
             method = AcquisitionMethod.PUBLIC_WEB_API
         else:
             parser = HeadParser()
