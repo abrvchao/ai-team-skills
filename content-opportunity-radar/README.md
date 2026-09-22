@@ -88,3 +88,22 @@ Do not add GSC, Keyword Planner, YouTube, Reddit, Product Hunt, Hugging Face, ar
 See:
 
 `../docs/handoffs/content-opportunity-radar/DSH_IMPLEMENTATION_ORDER_V1.md`
+
+
+## Phase 2A — Google Search Console
+
+`gsc.py` adds first-party Search Console evidence using the official Search Analytics API.
+
+Runtime requirements:
+
+- verified Search Console property
+- OAuth access token with `https://www.googleapis.com/auth/webmasters.readonly`
+- token is injected at runtime and is never written to RawEvent/cache/provenance
+
+The provider backfills a 35-day daily window and derives query-level:
+
+- demand from impressions
+- momentum from recent 7-day daily demand vs the prior 28-day baseline
+- authority from current ranking position and existing ranking pages
+
+Search Console documents that Search Analytics is subject to internal limits and does not guarantee every row. The provider therefore records `top_rows_only_not_exhaustive` provenance and uses confidence below 100 rather than treating the dataset as complete.

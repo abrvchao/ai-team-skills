@@ -1,9 +1,11 @@
-name: Content Opportunity Radar Phase 1
+name: Content Opportunity Radar Tests
 
 on:
   push:
     branches:
-      - dsh/content-opportunity-radar-phase1
+      - main
+      - "dsh/**"
+      - "feature/**"
   pull_request:
     paths:
       - "content-opportunity-radar/**"
@@ -21,6 +23,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile
-        run: python -m py_compile core.py entities.py features.py opportunity.py web.py pipeline.py test_phase1.py
+        run: python -m compileall -q .
       - name: Unit tests
-        run: python -m unittest -v test_phase1.py
+        run: python -m unittest -v test_phase1.py test_phase2_gsc.py
