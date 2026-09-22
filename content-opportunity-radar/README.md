@@ -57,6 +57,8 @@ python pipeline.py --topic "AI Agents" --website https://example.com
 
 Snapshots are appended to `.radar/snapshots.jsonl` by default. Repeated scheduled runs accumulate the historical series used for velocity and acceleration.
 
+The last successful provider payload is cached in `.radar/provider-cache.json`. If a provider later fails, is rate-limited, or is temporarily degraded with no events, the pipeline can emit the cached evidence as `stale` rather than failing the whole Radar. Cached events retain their original retrieval time, so freshness/confidence can decay instead of pretending the data is live.
+
 ## Output
 
 The CLI emits JSON containing:
