@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -520,3 +521,160 @@ def build_gsc_signals(
         ])
 
     return signals
+
+
+
+def _normalize_query_term(value: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", value.casefold())).strip()
+
+
+def _matches_query_terms(query: str, terms: Sequence[str]) -> bool:
+    normalized_query = _normalize_query_term(query)
+    normalized_terms = {
+        _normalize_query_term(term)
+        for term in terms
+        if _normalize_query_term(term)
+    }
+    return not normalized_terms or any(term in normalized_query for term in normalized_terms)
+
+
+def _weighted_mean(pairs: Sequence[tuple[float, float]], default: float = 0.0) -> float:
+    usable = [(float(value), max(0.0, float(weight))) for value, weight in pairs]
+    total_weight = sum(weight for _, weight in usable)
+    if total_weight <= 0:
+        values = [value for value, _ in usable]
+        return sum(values) / len(values) if values else default
+    return sum(value * weight for value, weight in usable) / total_weight
+
+
+def aggregate_gsc_topic_signals(
+    events: Sequence[RawEvent],
+    *,
+    topic_id: str,
+    query_terms: Sequence[str] = (),
+) -> list[Signal]:
+    """Collapse any number of GSC query rows into exactly three topic signals.
+
+    This prevents first-party Search Console from gaining extra scoring weight
+    merely because it produces many query rows. Query-level evidence remains
+    attached to the three aggregate signals for provenance.
+    """
+    features = [
+        feature
+        for feature in summarize_gsc_queries(events)
+        if _matches_query_terms(feature.query, query_terms)
+    ]
+    if not features:
+        return []
+
+    event_by_id = {event.id: event for event in events if event.provider == "gsc"}
+    evidence_ids = sorted({
+        evidence_id
+        for feature in features
+        for evidence_id in feature.evidence_ids
+        if evidence_id in event_by_id
+    })
+    related = [event_by_id[evidence_id] for evidence_id in evidence_ids]
+    now = utcnow()
+    observed_at = max(
+        (event.published_at or event.retrieved_at for event in related),
+        default=now,
+    )
+    freshness_seconds = max(0, int((now - observed_at).total_seconds()))
+    source = related[0].source if related else "gsc"
+
+    demand_weights = [
+        max(feature.recent_impressions_per_day, 0.1)
+        for feature in features
+    ]
+    momentum_weights = [
+        max(
+            feature.recent_impressions_per_day + feature.baseline_impressions_per_day,
+            0.1,
+        )
+        for feature in features
+    ]
+
+    demand_score = _weighted_mean([
+        (feature.demand_score, weight)
+        for feature, weight in zip(features, demand_weights)
+    ])
+    momentum_score = _weighted_mean([
+        (feature.momentum_score, weight)
+        for feature, weight in zip(features, momentum_weights)
+    ])
+    authority_score = _weighted_mean([
+        (feature.authority_score, weight)
+        for feature, weight in zip(features, demand_weights)
+    ])
+    confidence = min(
+        80.0,
+        _weighted_mean([
+            (feature.confidence, weight)
+            for feature, weight in zip(features, momentum_weights)
+        ]),
+    )
+
+    recent_demand = sum(feature.recent_impressions_per_day for feature in features)
+    baseline_demand = sum(feature.baseline_impressions_per_day for feature in features)
+    weighted_growth = _weighted_mean([
+        (feature.impression_growth_ratio, weight)
+        for feature, weight in zip(features, momentum_weights)
+    ])
+    weighted_position = _weighted_mean([
+        (feature.recent_position, weight)
+        for feature, weight in zip(features, demand_weights)
+        if feature.recent_position is not None
+    ])
+
+    entity_ids = sorted({
+        f"keyword:{stable_id(feature.query)}"
+        for feature in features
+    })
+
+    return [
+        Signal(
+            id=stable_id("gsc-topic-demand", topic_id),
+            topic_id=topic_id,
+            entity_ids=entity_ids,
+            signal_type="demand",
+            source=source,
+            provider="gsc",
+            observed_at=observed_at,
+            value=recent_demand,
+            normalized_value=clamp(demand_score),
+            confidence=confidence,
+            evidence_ids=evidence_ids,
+            freshness_seconds=freshness_seconds,
+        ),
+        Signal(
+            id=stable_id("gsc-topic-momentum", topic_id),
+            topic_id=topic_id,
+            entity_ids=entity_ids,
+            signal_type="momentum",
+            source=source,
+            provider="gsc",
+            observed_at=observed_at,
+            value=weighted_growth,
+            normalized_value=clamp(momentum_score),
+            confidence=confidence,
+            evidence_ids=evidence_ids,
+            freshness_seconds=freshness_seconds,
+            baseline=baseline_demand,
+            delta=recent_demand - baseline_demand,
+        ),
+        Signal(
+            id=stable_id("gsc-topic-authority", topic_id),
+            topic_id=topic_id,
+            entity_ids=entity_ids,
+            signal_type="authority",
+            source=source,
+            provider="gsc",
+            observed_at=observed_at,
+            value=weighted_position,
+            normalized_value=clamp(authority_score),
+            confidence=confidence,
+            evidence_ids=evidence_ids,
+            freshness_seconds=freshness_seconds,
+        ),
+    ]
