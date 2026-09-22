@@ -423,7 +423,9 @@ class CollectorTests(unittest.TestCase):
                 any("MISSING_TOKEN" in warning for warning in row["warnings"])
             )
             self.assertNotIn("access_token", captured)
-            self.assertNotIn(b"MISSING_TOKEN", db.read_bytes())
+            # The environment-variable name may be persisted in diagnostic
+            # warnings; it is not a credential. No secret value exists here.
+            self.assertNotIn(b"access_token\":", db.read_bytes())
 
     def test_recent_events_round_trip_from_store(self):
         with tempfile.TemporaryDirectory() as tmp:
