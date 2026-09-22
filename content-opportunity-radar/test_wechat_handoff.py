@@ -88,6 +88,34 @@ def radar_pack():
 
 
 class WeChatHandoffTests(unittest.TestCase):
+    def test_requires_real_radar_contract(self):
+        wrong = radar_pack()
+        wrong["schema_version"] = "other"
+        with self.assertRaises(ValueError):
+            build_wechat_research_pack(
+                wrong,
+                audience="AI builders",
+                objective="Explain the opportunity",
+            )
+
+        missing_guardrail = radar_pack()
+        missing_guardrail["guardrails"] = {}
+        with self.assertRaises(ValueError):
+            build_wechat_research_pack(
+                missing_guardrail,
+                audience="AI builders",
+                objective="Explain the opportunity",
+            )
+
+        missing_topic = radar_pack()
+        missing_topic["topic"] = ""
+        with self.assertRaises(ValueError):
+            build_wechat_research_pack(
+                missing_topic,
+                audience="AI builders",
+                objective="Explain the opportunity",
+            )
+
     def test_requires_explicit_audience_and_objective(self):
         with self.assertRaises(ValueError):
             build_wechat_research_pack(
