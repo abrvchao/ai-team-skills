@@ -35,6 +35,7 @@ from pipeline import (
     dedupe_news,
     run_pipeline,
 )
+from research_pack import build_research_pack
 from web import WebsiteProvider
 
 
@@ -217,6 +218,7 @@ def run_discovery(
     content_max_pages: int = 20,
     content_snapshot_path: str = ".radar/page-snapshots.jsonl",
     seed_providers: Sequence[DataProvider] | None = None,
+    include_research_pack: bool = False,
 ) -> dict[str, Any]:
     seed = collect_seed_events(
         scope=scope,
@@ -267,6 +269,14 @@ def run_discovery(
 
     ranked = overlap_penalized_rank(reports)
     top = ranked[: max(1, min(top_n, len(ranked) or 1))]
+    if include_research_pack:
+        top = [
+            {
+                **row,
+                "research_pack": build_research_pack(row),
+            }
+            for row in top
+        ]
     persist_radar_rankings(top, snapshot_path=snapshot_path)
 
     return {
@@ -304,6 +314,11 @@ def main() -> int:
     parser.add_argument("--hydrate-content", action="store_true")
     parser.add_argument("--content-max-pages", type=int, default=20)
     parser.add_argument("--content-snapshot-path", default=".radar/page-snapshots.jsonl")
+    parser.add_argument(
+        "--research-pack",
+        action="store_true",
+        help="Attach a provenance-first Research Pack to each Top Opportunity",
+    )
     parser.add_argument("--compact", action="store_true")
     args = parser.parse_args()
 
@@ -326,6 +341,7 @@ def main() -> int:
         hydrate_content=args.hydrate_content,
         content_max_pages=args.content_max_pages,
         content_snapshot_path=args.content_snapshot_path,
+        include_research_pack=args.research_pack,
     )
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2))
     return 0
