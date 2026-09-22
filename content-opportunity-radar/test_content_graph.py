@@ -14,8 +14,9 @@ from content_graph import (
     analyze_gsc_site_content,
     page_query_relevance,
 )
-from core import AcquisitionMethod, Provenance, RawEvent, stable_id
+from core import AcquisitionMethod, CollectionRequest, CollectionResult, DataProvider, ProviderState, Provenance, RawEvent, stable_id
 from opportunity import score_opportunity
+from pipeline import run_pipeline
 from web import FetchResponse
 
 
@@ -143,6 +144,20 @@ def gsc_history(
                 )
             )
     return rows
+
+
+class StaticGSCProvider(DataProvider):
+    id = "gsc"
+
+    def __init__(self, events: list[RawEvent]):
+        self.events = events
+
+    def collect(self, request: CollectionRequest):
+        return CollectionResult(
+            provider=self.id,
+            status=ProviderState.HEALTHY,
+            events=list(self.events),
+        )
 
 
 class ContentGraphTests(unittest.TestCase):
@@ -397,6 +412,52 @@ class ContentGraphTests(unittest.TestCase):
         self.assertIsNotNone(row.baseline_ctr)
         self.assertGreater(row.baseline_ctr, row.actual_ctr)
         self.assertGreater(row.ctr_gap_score, 0)
+
+    def test_pipeline_connects_gsc_page_content_to_supply_gap(self):
+        import tempfile
+
+        query = "ai agent memory"
+        url = "https://example.com/general"
+        events = gsc_history(query=query, pages=[url])
+        fetcher = FakeFetcher({
+            "https://example.com/robots.txt": ("text/plain", "User-agent: *\nAllow: /\n"),
+            url: (
+                "text/html",
+                """
+                <html>
+                  <head><title>Company News</title></head>
+                  <body><main><h1>Quarterly Update</h1><p>Revenue and hiring news.</p></main></body>
+                </html>
+                """,
+            ),
+        })
+        crawler = SiteCrawler(
+            hydrator=PageHydrator(fetcher),
+            robots=RobotsPolicy(fetcher),
+            sleep_fn=lambda seconds: None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report = run_pipeline(
+                topic="AI Agents",
+                providers=[StaticGSCProvider(events)],
+                gsc_site_url="sc-domain:example.com",
+                hydrate_content=True,
+                content_crawler=crawler,
+                snapshot_path=str(Path(tmp) / "signals.jsonl"),
+                cache_path=str(Path(tmp) / "cache.json"),
+                content_snapshot_path=str(Path(tmp) / "pages.jsonl"),
+            )
+
+        self.assertEqual(report["content_context"]["status"], "complete")
+        supply_signals = [
+            signal for signal in report["signals"]
+            if signal["provider"] == "site_content"
+            and signal["signal_type"] == "supply"
+        ]
+        self.assertEqual(len(supply_signals), 1)
+        self.assertLess(supply_signals[0]["normalized_value"], 30)
+        self.assertGreater(report["opportunity"]["components"]["supply_gap"], 70)
 
     def test_page_relevance_is_deterministic(self):
         page = page_doc(
