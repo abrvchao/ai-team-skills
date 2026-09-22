@@ -284,3 +284,36 @@ Radar-level snapshots are appended to the normal snapshot store for:
 - current rank
 
 This allows later analysis of opportunity-rank movement over time.
+
+## Research Pack V1 — evidence handoff to AI Team
+
+The Radar can turn each Top Opportunity into a provenance-first Research Pack for downstream research/writing agents:
+
+```bash
+python radar.py --discover --scope "AI" --top 5 --research-pack
+```
+
+Or build a pack from an existing single-topic JSON report:
+
+```bash
+python pipeline.py --topic "agent memory" > opportunity.json
+python research_pack.py opportunity.json --output research-pack.json
+
+# human-readable view
+python research_pack.py opportunity.json --format markdown
+```
+
+A Research Pack contains only material traceable to the scored opportunity:
+
+- score breakdown and existing `why now` reasons
+- evidence-dimension coverage and explicit missing dimensions
+- provider/source-group summary
+- question-shaped evidence
+- pain/request evidence
+- observed metrics/stats
+- citation records with Evidence ID, URL, acquisition method and provenance
+- traceability coverage, including missing Evidence IDs
+- guardrails instructing downstream agents not to invent missing dimensions or unsupported facts
+
+The Research Pack does **not** ask an LLM to generate a trend, topic, citation, or unsupported claim. It is the contract between the Signal Intelligence Engine and downstream AI Team skills such as research, writing, review, and publishing.
+
