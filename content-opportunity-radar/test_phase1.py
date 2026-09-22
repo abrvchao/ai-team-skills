@@ -22,6 +22,7 @@ from core import (
 from features import acceleration, delta, summarize_signals, velocity
 from opportunity import score_opportunity
 from pipeline import dedupe_news, historical_momentum_signals
+from web import parse_sitemap_index
 
 
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=timezone.utc)
@@ -191,6 +192,20 @@ class Phase1Tests(unittest.TestCase):
         ])
         self.assertEqual(len(rows), 2)
         self.assertEqual({row.id for row in rows}, {"a", "c"})
+
+    def test_sitemap_index_parser_discovers_child_sitemaps(self):
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>https://example.com/post-sitemap.xml</loc></sitemap>
+          <sitemap><loc>https://example.com/page-sitemap.xml</loc></sitemap>
+        </sitemapindex>"""
+        self.assertEqual(
+            parse_sitemap_index(xml),
+            [
+                "https://example.com/post-sitemap.xml",
+                "https://example.com/page-sitemap.xml",
+            ],
+        )
 
     def test_opportunity_score_is_explainable_and_evidence_backed(self):
         rows = [
