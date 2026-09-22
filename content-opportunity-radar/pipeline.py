@@ -26,6 +26,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
+from content_graph import PageSnapshotStore, SiteCrawler, analyze_gsc_site_content
 from core import (
     AcquisitionMethod,
     CollectionRequest,
@@ -479,6 +480,24 @@ def dedupe_news(events: list[RawEvent]) -> list[RawEvent]:
     return kept
 
 
+def prioritized_gsc_pages(events: Sequence[RawEvent]) -> list[str]:
+    """Rank GSC page URLs by observed impressions for bounded hydration."""
+    totals: dict[str, float] = {}
+    for event in events:
+        if event.provider != "gsc" or not isinstance(event.raw, dict):
+            continue
+        page = str((event.raw.get("dimensions") or {}).get("page") or "").strip()
+        if not page:
+            continue
+        totals[page] = totals.get(page, 0.0) + event.metrics.get("impressions", 0.0)
+    return [
+        page for page, _ in sorted(
+            totals.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ]
+
+
 def _freshness_seconds(event: RawEvent, now: datetime) -> int:
     source_time = event.published_at or event.retrieved_at
     try:
@@ -680,6 +699,10 @@ def run_pipeline(
     gsc_site_url: str | None = None,
     gsc_access_token: str | None = None,
     gsc_query_filter: str | None = None,
+    hydrate_content: bool = False,
+    content_max_pages: int = 20,
+    content_snapshot_path: str = ".radar/page-snapshots.jsonl",
+    content_crawler: SiteCrawler | None = None,
     providers: Sequence[DataProvider] | None = None,
 ) -> dict[str, Any]:
     request = CollectionRequest(topic=topic, limit=limit)
@@ -780,6 +803,35 @@ def run_pipeline(
             )
         )
 
+    content_context: dict[str, Any] | None = None
+    if hydrate_content:
+        if gsc_events:
+            crawler = content_crawler or SiteCrawler(
+                store=PageSnapshotStore(content_snapshot_path)
+            )
+            crawl_report = crawler.hydrate_urls(
+                prioritized_gsc_pages(gsc_events),
+                max_pages=content_max_pages,
+            )
+            content_analysis = analyze_gsc_site_content(
+                gsc_events,
+                crawl_report.pages,
+                topic_id=topic_node.id,
+                query_terms=[topic_node.name, *sorted(topic_node.aliases)],
+            )
+            if content_analysis.supply_signal is not None:
+                signals.append(content_analysis.supply_signal)
+            content_context = {
+                "status": "complete",
+                "crawl": crawl_report.to_dict(include_text=False),
+                "analysis": content_analysis.to_dict(),
+            }
+        else:
+            content_context = {
+                "status": "skipped",
+                "reason": "GSC query/page evidence is required for content hydration analysis",
+            }
+
     signals.extend(
         historical_momentum_signals(
             store=store,
@@ -822,6 +874,7 @@ def run_pipeline(
         "opportunity": opportunity.to_dict(),
         "events": [event.to_dict() for event in all_events],
         "signals": [signal.to_dict() for signal in signals],
+        "content_context": content_context,
     }
 
 
@@ -834,6 +887,13 @@ def main() -> int:
     parser.add_argument("--website", help="Optional competitor/user website to add supply signals")
     parser.add_argument("--gsc-site", help="Optional Search Console property, e.g. sc-domain:example.com")
     parser.add_argument("--gsc-query-filter", help="Optional GSC query contains filter; defaults to topic")
+    parser.add_argument(
+        "--hydrate-content",
+        action="store_true",
+        help="Hydrate top GSC ranking pages and compute deterministic Supply Gap evidence",
+    )
+    parser.add_argument("--content-max-pages", type=int, default=20)
+    parser.add_argument("--content-snapshot-path", default=".radar/page-snapshots.jsonl")
     parser.add_argument("--compact", action="store_true")
     args = parser.parse_args()
 
@@ -846,6 +906,9 @@ def main() -> int:
         gsc_site_url=args.gsc_site,
         gsc_access_token=os.getenv("GSC_ACCESS_TOKEN"),
         gsc_query_filter=args.gsc_query_filter,
+        hydrate_content=args.hydrate_content,
+        content_max_pages=max(1, min(args.content_max_pages, 100)),
+        content_snapshot_path=args.content_snapshot_path,
     )
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2))
     return 0

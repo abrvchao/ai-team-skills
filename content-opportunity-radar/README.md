@@ -133,3 +133,63 @@ This prevents a high-row-count source from receiving extra scoring weight. The O
 For this CLI integration, the GSC request defaults to a lightweight query-contains filter based on the topic. Production collection should instead ingest a site-level GSC window on a schedule and map that shared dataset to many Topic Graph nodes; it should not make a full Search Console request separately for every dashboard topic.
 
 CTR-gap and query/page-gap are intentionally deferred until the Site Content Graph can compare GSC evidence with hydrated page content.
+
+
+## Site Content Graph V1
+
+The optional content-hydration layer turns GSC ranking URLs into deterministic page evidence.
+
+Enable it explicitly:
+
+```bash
+export GSC_ACCESS_TOKEN=...
+python pipeline.py \
+  --topic "AI Agents" \
+  --gsc-site "sc-domain:example.com" \
+  --hydrate-content \
+  --content-max-pages 20
+```
+
+The crawler is intentionally bounded:
+
+- it hydrates only already-known/ranking URLs, not the open web
+- URLs are prioritized by observed GSC impressions
+- `robots.txt` is checked before hydration
+- crawl delay is respected when declared
+- page budget is capped
+- page snapshots are append-only in `.radar/page-snapshots.jsonl`
+- semantic content hashes detect page changes
+
+Each hydrated page records:
+
+- canonical URL
+- title / description
+- H1 / H2
+- bounded main text
+- internal links
+- published / modified time when exposed
+- content hash
+- first seen / last seen
+- change state
+
+GSC evidence is connected as:
+
+```
+query
+  → ranking page
+  → hydrated page content
+  → deterministic relevance
+  → topic-level Supply signal
+  → Opportunity Supply Gap
+```
+
+The same evidence layer also reports:
+
+- query/page gap
+- multiple-page cannibalization candidates
+- stale winning pages
+- CTR opportunity relative to the site's own comparable-position baseline
+
+Unknown/unhydrated pages are treated as **unknown**, not as a proven content gap. An LLM is not used to create these scores.
+
+The `SiteCrawler` and page graph are generic and can be reused for competitor URLs discovered by the Phase-1 WebsiteProvider. Multi-competitor scheduling and competitor-level supply aggregation are intentionally a separate follow-up rather than expanding this module into a full SEO crawler.

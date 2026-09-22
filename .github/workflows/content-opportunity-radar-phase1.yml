@@ -25,4 +25,4 @@ jobs:
       - name: Compile
         run: python -m compileall -q .
       - name: Unit tests
-        run: python -m unittest -v test_phase1.py test_phase2_gsc.py
+        run: python -m unittest discover -v -p "test_*.py"
