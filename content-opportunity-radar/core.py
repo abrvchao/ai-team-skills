@@ -90,6 +90,38 @@ class RawEvent:
             data.pop("raw", None)
         return data
 
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "RawEvent":
+        retrieved = data.get("retrieved_at")
+        published = data.get("published_at")
+        provenance = data.get("provenance") or {}
+        return cls(
+            id=str(data["id"]),
+            provider=str(data["provider"]),
+            source=str(data.get("source") or ""),
+            acquisition_method=AcquisitionMethod(str(data["acquisition_method"])),
+            retrieved_at=datetime.fromisoformat(str(retrieved).replace("Z", "+00:00")),
+            external_id=data.get("external_id"),
+            url=data.get("url"),
+            title=data.get("title"),
+            text=data.get("text"),
+            author=data.get("author"),
+            community=data.get("community"),
+            published_at=(
+                datetime.fromisoformat(str(published).replace("Z", "+00:00"))
+                if published else None
+            ),
+            language=data.get("language"),
+            country=data.get("country"),
+            metrics={str(k): float(v) for k, v in (data.get("metrics") or {}).items()},
+            raw=data.get("raw"),
+            provenance=Provenance(
+                terms_class=str(provenance.get("terms_class") or "unknown"),
+                api_version=provenance.get("api_version"),
+                endpoint=provenance.get("endpoint"),
+            ),
+        )
+
 
 @dataclass(slots=True)
 class Signal:
@@ -204,6 +236,8 @@ class DataProvider(ABC):
     fallback = ""
     terms_class = "public"
     staleness_ttl_seconds = 3600
+    retry_attempts = 2
+    retry_backoff_seconds = 0.25
 
     @abstractmethod
     def collect(self, request: CollectionRequest) -> CollectionResult:
@@ -229,14 +263,69 @@ class ProviderRegistry:
         return list(self._providers.values())
 
     def safe_collect(self, provider: DataProvider, request: CollectionRequest) -> CollectionResult:
+        attempts = max(1, int(provider.retry_attempts))
+        last: CollectionResult | None = None
+        for attempt in range(attempts):
+            try:
+                last = provider.collect(request)
+            except Exception as exc:  # provider failure isolation is intentional
+                last = CollectionResult(
+                    provider=provider.id,
+                    status=ProviderState.FAILED,
+                    warnings=[f"{type(exc).__name__}: {exc}"],
+                )
+
+            # Rate limits should wait for their reset window; degraded results
+            # may still contain useful evidence. Only hard failures are retried.
+            if last.status != ProviderState.FAILED:
+                return last
+            if attempt + 1 < attempts:
+                time.sleep(provider.retry_backoff_seconds * (2 ** attempt))
+        return last or CollectionResult(provider=provider.id, status=ProviderState.FAILED)
+
+
+class EventCache:
+    """Persistent last-successful provider events for stale fallback."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _key(provider: str, topic: str) -> str:
+        return f"{provider}::{topic.casefold().strip()}"
+
+    def _read(self) -> dict[str, Any]:
+        if not self.path.exists():
+            return {}
         try:
-            return provider.collect(request)
-        except Exception as exc:  # provider failure isolation is intentional
-            return CollectionResult(
-                provider=provider.id,
-                status=ProviderState.FAILED,
-                warnings=[f"{type(exc).__name__}: {exc}"],
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def save(self, provider: str, topic: str, events: Iterable[RawEvent]) -> None:
+        with self._lock:
+            payload = self._read()
+            payload[self._key(provider, topic)] = {
+                "saved_at": isoformat(utcnow()),
+                "events": [event.to_dict(include_raw=True) for event in events],
+            }
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps(payload, ensure_ascii=False, default=str),
+                encoding="utf-8",
             )
+
+    def load(self, provider: str, topic: str) -> list[RawEvent]:
+        with self._lock:
+            entry = self._read().get(self._key(provider, topic)) or {}
+        rows: list[RawEvent] = []
+        for item in entry.get("events") or []:
+            try:
+                rows.append(RawEvent.from_dict(item))
+            except Exception:
+                continue
+        return rows
 
 
 class SnapshotStore:
