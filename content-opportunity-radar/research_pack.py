@@ -114,18 +114,22 @@ def _dimension_coverage(signals: Sequence[Mapping[str, Any]]) -> dict[str, dict[
     return result
 
 
-def _citation_quality(event: Mapping[str, Any]) -> str:
+def _evidence_class(event: Mapping[str, Any]) -> str:
+    """Describe evidence origin without pretending acquisition equals truth."""
     group = _source_group(event)
     acquisition = str(event.get("acquisition_method") or "")
-    provenance = event.get("provenance") or {}
-    terms_class = str(provenance.get("terms_class") or "")
-
     if group == "first_party":
-        return "first_party"
-    if acquisition in {"official_api", "oauth_api"} or "official" in terms_class:
-        return "high"
-    if acquisition in {"rss", "atom", "public_web_api"}:
-        return "medium"
+        return "first_party_observation"
+    if group == "market":
+        return "platform_market_metric"
+    if group == "community":
+        return "community_direct"
+    if group == "media":
+        return "media_index"
+    if group == "website":
+        return "site_direct"
+    if acquisition in {"official_api", "oauth_api"}:
+        return "direct_api"
     return "context"
 
 
@@ -180,7 +184,7 @@ def build_research_pack(
                 "provider": event.get("provider"),
                 "source": event.get("source"),
                 "source_group": _source_group(event),
-                "quality": _citation_quality(event),
+                "evidence_class": _evidence_class(event),
                 "title": event.get("title"),
                 "url": event.get("url"),
                 "published_at": event.get("published_at"),
@@ -273,12 +277,21 @@ def build_research_pack(
     reasons = list(opportunity.get("reasons") or [])
     component_scores = dict(opportunity.get("components") or {})
 
+    resolvable_evidence = requested_evidence & set(event_by_id)
+    cited_evidence = set(citation_by_evidence)
     traceability = {
         "requested_evidence_count": len(requested_evidence),
+        "resolved_evidence_count": len(resolvable_evidence),
         "cited_evidence_count": len(citations),
-        "missing_evidence_ids": sorted(requested_evidence - set(citation_by_evidence)),
+        "unresolved_evidence_ids": sorted(requested_evidence - set(event_by_id)),
+        "uncited_due_to_limit_ids": sorted(resolvable_evidence - cited_evidence),
+        "resolution_coverage": (
+            round(len(resolvable_evidence) / len(requested_evidence), 4)
+            if requested_evidence
+            else 1.0
+        ),
         "citation_coverage": (
-            round(len(citations) / len(requested_evidence), 4)
+            round(len(cited_evidence) / len(requested_evidence), 4)
             if requested_evidence
             else 1.0
         ),
