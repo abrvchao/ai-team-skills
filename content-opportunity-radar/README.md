@@ -83,7 +83,7 @@ The CLI emits JSON containing:
 
 ## Phase-1 boundary
 
-Do not add GSC, Keyword Planner, YouTube, Reddit, Product Hunt, Hugging Face, arXiv, Google Trends, or China social connectors until Phase 1 review is complete.
+Phase 1 is complete and preserved as the stable acquisition/scoring foundation. New providers must remain optional, failure-isolated, provenance-backed, and must not bypass deterministic scoring.
 
 See:
 
@@ -134,6 +134,49 @@ For this CLI integration, the GSC request defaults to a lightweight query-contai
 
 CTR-gap and query/page-gap are intentionally deferred until the Site Content Graph can compare GSC evidence with hydrated page content.
 
+
+## Keyword Planner — Baseline Demand + Commercial Intent
+
+`keyword_planner.py` adds official Google Ads historical keyword metrics as a **slow-moving baseline**, not as a real-time trend source.
+
+It contributes exactly two topic-level signal types:
+
+- **Demand** — log-scaled average monthly searches
+- **Commercial** — competition/competition-index plus top-of-page bid evidence
+
+It intentionally contributes **no Momentum signal**. Short-term acceleration still comes from sources such as GitHub, Hacker News, media signals, GSC movement, and historical Radar snapshots.
+
+Example:
+
+```bash
+export GOOGLE_ADS_ACCESS_TOKEN=...
+python pipeline.py \
+  --topic "agent memory architecture" \
+  --google-ads-customer "1234567890"
+```
+
+Optional manager-account context:
+
+```bash
+python pipeline.py \
+  --topic "agent memory architecture" \
+  --google-ads-customer "1234567890" \
+  --google-ads-login-customer "1112223333" \
+  --google-ads-geo-target "2840" \
+  --google-ads-language "1000"
+```
+
+The same options can be passed to `radar.py`; Keyword Planner is used during **deep scans of discovered candidates**, not during broad seed discovery.
+
+Runtime/access notes for the 2026 Google Ads API model:
+
+- OAuth scope: `https://www.googleapis.com/auth/adwords`
+- default REST API version in this project: `v25`
+- production Keyword Planning requires a Google Cloud project with an API access level that permits planning services; Explorer access does not expose KeywordPlanIdeaService
+- the legacy `developer-token` header is optional compatibility only in this implementation; it is not treated as the current access-level credential
+- historical metrics refresh monthly, so the provider has a long staleness TTL and should be cached/scheduled rather than called per dashboard refresh
+
+The provider records average monthly searches, monthly search-volume history, competition, competition index, bid ranges, and average CPC when returned by the API. Missing credentials produce `disabled` / `auth_required` states and do not fail the rest of the Radar.
 
 ## Site Content Graph V1
 
