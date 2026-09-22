@@ -1,0 +1,26 @@
+name: Content Opportunity Radar Phase 1
+
+on:
+  push:
+    branches:
+      - dsh/content-opportunity-radar-phase1
+  pull_request:
+    paths:
+      - "content-opportunity-radar/**"
+      - ".github/workflows/content-opportunity-radar-phase1.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: content-opportunity-radar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile core.py entities.py features.py opportunity.py web.py pipeline.py test_phase1.py
+      - name: Unit tests
+        run: python -m unittest -v test_phase1.py
