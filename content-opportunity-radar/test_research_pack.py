@@ -121,8 +121,10 @@ class ResearchPackTests(unittest.TestCase):
         evidence_ids = {row["evidence_id"] for row in pack["citations"]}
         self.assertEqual(evidence_ids, {"gh-1", "hn-1", "kp-1"})
         self.assertNotIn("unused", evidence_ids)
-        self.assertEqual(pack["traceability"]["missing_evidence_ids"], ["missing-1"])
+        self.assertEqual(pack["traceability"]["unresolved_evidence_ids"], ["missing-1"])
+        self.assertEqual(pack["traceability"]["uncited_due_to_limit_ids"], [])
         self.assertEqual(pack["traceability"]["requested_evidence_count"], 4)
+        self.assertEqual(pack["traceability"]["resolved_evidence_count"], 3)
         self.assertEqual(pack["traceability"]["cited_evidence_count"], 3)
 
     def test_questions_and_pain_are_cited(self):
@@ -156,6 +158,18 @@ class ResearchPackTests(unittest.TestCase):
         groups = pack["source_summary"]["source_groups"]
         self.assertEqual(groups["market"], 1)
         self.assertEqual(groups["community"], 2)
+        classes = {row["evidence_id"]: row["evidence_class"] for row in pack["citations"]}
+        self.assertEqual(classes["kp-1"], "platform_market_metric")
+        self.assertEqual(classes["gh-1"], "community_direct")
+
+    def test_citation_limit_is_not_reported_as_unresolved(self):
+        report = sample_report()
+        report["opportunity"]["evidence_ids"] = ["gh-1", "hn-1", "kp-1"]
+        pack = build_research_pack(report, max_citations=2)
+        self.assertEqual(pack["traceability"]["unresolved_evidence_ids"], [])
+        self.assertEqual(pack["traceability"]["resolved_evidence_count"], 3)
+        self.assertEqual(pack["traceability"]["cited_evidence_count"], 2)
+        self.assertEqual(len(pack["traceability"]["uncited_due_to_limit_ids"]), 1)
 
     def test_guardrails_are_explicit(self):
         pack = build_research_pack(sample_report())
