@@ -60,7 +60,45 @@ SECRET_METADATA_KEYS = {
     "secret",
     "client_secret",
     "developer_token",
+    "authorization",
+    "cookie",
+    "set_cookie",
+    "set-cookie",
 }
+
+
+def _sensitive_key(value: object) -> bool:
+    normalized = str(value or "").casefold().replace("-", "_")
+    if normalized in SECRET_METADATA_KEYS:
+        return True
+    return any(
+        marker in normalized
+        for marker in (
+            "access_token",
+            "authorization",
+            "client_secret",
+            "api_key",
+            "apikey",
+            "password",
+            "developer_token",
+        )
+    )
+
+
+def _sanitize_for_storage(value: Any) -> Any:
+    """Recursively redact credential-shaped fields before durable storage."""
+    if isinstance(value, Mapping):
+        return {
+            str(key): (
+                "[REDACTED]"
+                if _sensitive_key(key)
+                else _sanitize_for_storage(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_storage(item) for item in value]
+    return value
 SUCCESS_STATES = {
     ProviderState.HEALTHY,
     ProviderState.DEGRADED,
@@ -143,7 +181,7 @@ class CollectionJob:
         self,
         environ: Mapping[str, str] | None = None,
     ) -> tuple[dict[str, Any], list[str]]:
-        environ = environ or os.environ
+        environ = os.environ if environ is None else environ
         metadata = dict(self.metadata)
         missing: list[str] = []
         for key, env_name in self.metadata_env.items():
@@ -332,10 +370,12 @@ class RadarStore:
         job_id: str,
     ) -> None:
         timestamp = isoformat(observed_at)
-        payload = event.to_dict(include_raw=True)
+        payload = event.to_dict(include_raw=False)
         metrics_json = _json(event.metrics)
-        raw_json = _json(payload.get("raw"))
-        provenance_json = _json(payload.get("provenance") or {})
+        raw_json = _json(_sanitize_for_storage(event.raw))
+        provenance_json = _json(
+            _sanitize_for_storage(payload.get("provenance") or {})
+        )
 
         self.conn.execute(
             """
@@ -582,7 +622,7 @@ class CollectionService:
         self.provider_factories = dict(
             provider_factories or default_provider_factories()
         )
-        self.environ = environ or os.environ
+        self.environ = os.environ if environ is None else environ
         self.now_fn = now_fn
 
     def _provider(self, provider_id: str) -> DataProvider:
