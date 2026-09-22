@@ -81,8 +81,15 @@ def source_diversity(signals: Iterable[Signal]) -> float:
     return clamp(len(providers) / 4.0 * 100.0)
 
 
-def cross_source_confirmation(signals: Iterable[Signal]) -> float:
-    rows = [signal for signal in signals if signal.normalized_value > 0]
+def cross_source_confirmation(signals: Iterable[Signal], threshold: float = 50.0) -> float:
+    """Confirm a trend only from materially positive provider signals.
+
+    Source diversity answers "how many providers have evidence".
+    Cross-source confirmation answers "how many providers independently show
+    meaningful signal strength". Neutral/weak values below threshold do not
+    count as trend confirmation.
+    """
+    rows = [signal for signal in signals if signal.normalized_value >= threshold]
     if not rows:
         return 0.0
     by_provider: dict[str, list[Signal]] = {}
@@ -113,7 +120,7 @@ class FeatureSummary:
 
 
 def summarize_signals(signals: Sequence[Signal]) -> FeatureSummary:
-    positive = {row.provider for row in signals if row.normalized_value > 0}
+    positive = {row.provider for row in signals if row.normalized_value >= 50.0}
     return FeatureSummary(
         source_diversity=source_diversity(signals),
         cross_source_confirmation=cross_source_confirmation(signals),
