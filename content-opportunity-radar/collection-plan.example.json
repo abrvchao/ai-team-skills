@@ -1,0 +1,66 @@
+{
+  "database": ".radar/radar.db",
+  "jobs": [
+    {
+      "id": "ai-github",
+      "provider": "github",
+      "topic": "AI",
+      "interval_seconds": 1800,
+      "limit": 30
+    },
+    {
+      "id": "ai-hackernews",
+      "provider": "hackernews",
+      "topic": "AI",
+      "interval_seconds": 900,
+      "limit": 30
+    },
+    {
+      "id": "ai-google-news",
+      "provider": "google_news",
+      "topic": "AI",
+      "interval_seconds": 1800,
+      "limit": 30
+    },
+    {
+      "id": "ai-gdelt",
+      "provider": "gdelt",
+      "topic": "AI",
+      "interval_seconds": 1800,
+      "limit": 30
+    },
+    {
+      "id": "my-site-gsc",
+      "provider": "gsc",
+      "topic": "site-wide",
+      "interval_seconds": 21600,
+      "limit": 5000,
+      "metadata": {
+        "site_url": "sc-domain:example.com",
+        "query_filter": "",
+        "dimensions": ["date", "query", "page"],
+        "row_limit": 5000,
+        "max_rows": 25000
+      },
+      "metadata_env": {
+        "access_token": "GSC_ACCESS_TOKEN"
+      }
+    },
+    {
+      "id": "agent-memory-keyword-baseline",
+      "provider": "keyword_planner",
+      "topic": "agent memory",
+      "interval_seconds": 604800,
+      "limit": 20,
+      "metadata": {
+        "customer_id": "1234567890",
+        "keywords": ["agent memory", "ai agent memory"],
+        "geo_target": "2840",
+        "language_constant": "1000"
+      },
+      "metadata_env": {
+        "access_token": "GOOGLE_ADS_ACCESS_TOKEN"
+      }
+    }
+  ]
+}
