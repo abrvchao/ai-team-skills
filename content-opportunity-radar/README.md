@@ -193,3 +193,51 @@ The same evidence layer also reports:
 Unknown/unhydrated pages are treated as **unknown**, not as a proven content gap. An LLM is not used to create these scores.
 
 The `SiteCrawler` and page graph are generic and can be reused for competitor URLs discovered by the Phase-1 WebsiteProvider. Multi-competitor scheduling and competitor-level supply aggregation are intentionally a separate follow-up rather than expanding this module into a full SEO crawler.
+
+## Opportunity Discovery Loop V1
+
+`radar.py` turns the single-topic pipeline into an actual Radar:
+
+```
+broad real-source seed collection
+  → candidate topic extraction
+  → alias / near-duplicate clustering
+  → exclusive seed-evidence assignment
+  → deep scan of top candidates
+  → overlap-aware ranking
+  → Top Opportunities
+```
+
+Run:
+
+```bash
+python radar.py --discover --scope "AI" --top 5
+```
+
+Useful options:
+
+```bash
+export GITHUB_TOKEN=...
+export GSC_ACCESS_TOKEN=...
+
+python radar.py \
+  --discover \
+  --scope "AI" \
+  --candidates 8 \
+  --top 5 \
+  --gsc-site "sc-domain:example.com" \
+  --hydrate-content
+```
+
+Discovery does not ask an LLM to invent topics. Candidates come from observed source titles/text, GitHub repository topics, and optional Search Console queries. Synonymous/near-duplicate candidates are clustered before deep scanning, each seed event is assigned to at most one candidate during discovery, and final ranking applies an evidence-overlap penalty so several near-identical opportunities cannot occupy the top slots using the same evidence.
+
+The base Opportunity Score is not modified by the overlap penalty. The Radar adds a separate `rank_score` used only to order the Top Opportunities list. Opportunity Score components and evidence provenance remain inspectable.
+
+Radar-level snapshots are appended to the normal snapshot store for:
+
+- opportunity score
+- rank score
+- discovery score
+- current rank
+
+This allows later analysis of opportunity-rank movement over time.
