@@ -575,10 +575,16 @@ def historical_momentum_signals(
         series = store.series("topic", topic_id, "event_count", provider)
         if len(series) < 2:
             continue
+        elapsed = (series[-1].collected_at - series[-2].collected_at).total_seconds()
+        # Re-running the demo seconds apart must not manufacture enormous
+        # per-day velocity. Production collectors should run on a real cadence.
+        if elapsed < 300:
+            continue
         vel = velocity(series)
         acc = acceleration(series)
-        # A positive repeatable change is evidence; a single initial snapshot is not.
-        normalized = clamp(50.0 + vel * 10.0 + acc * 5.0)
+        # No positive movement => no historical trend evidence.
+        strength = max(0.0, vel) + 0.5 * max(0.0, acc)
+        normalized = clamp(100.0 * (1.0 - math.exp(-strength / 5.0))) if strength > 0 else 0.0
         rows.append(
             Signal(
                 id=stable_id("history", topic_id, provider, series[-1].collected_at.isoformat()),
