@@ -1,7 +1,11 @@
-"""Phase-1 real-source pipeline for Content Opportunity Radar.
+"""Real-source pipeline for Content Opportunity Radar.
 
 Run:
     python pipeline.py --topic "AI Agents" --limit 10
+
+Optional first-party Search Console context:
+    GSC_ACCESS_TOKEN=... python pipeline.py --topic "AI Agents" \
+        --gsc-site "sc-domain:example.com"
 
 The pipeline never asks an LLM whether a trend exists. It collects raw evidence,
 persists metric snapshots, derives deterministic features, then scores the
@@ -20,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Sequence
 
 from core import (
     AcquisitionMethod,
@@ -42,6 +46,7 @@ from core import (
 )
 from entities import TopicResolver, default_resolver, normalize_text
 from features import acceleration, summarize_signals, velocity
+from gsc import GSCProvider, aggregate_gsc_topic_signals
 from opportunity import score_opportunity
 from web import WebsiteProvider, fetch_text, parse_feed
 
@@ -546,6 +551,28 @@ def snapshot_events(
     now = result.collected_at
     store.append(MetricSnapshot("topic", topic_id, "event_count", len(result.events), now, result.provider))
 
+    if result.provider == "gsc":
+        impressions = sum(event.metrics.get("impressions", 0.0) for event in result.events)
+        clicks = sum(event.metrics.get("clicks", 0.0) for event in result.events)
+        weighted_position_numerator = sum(
+            event.metrics.get("position", 0.0) * event.metrics.get("impressions", 0.0)
+            for event in result.events
+        )
+        weighted_position = (
+            weighted_position_numerator / impressions if impressions > 0 else 0.0
+        )
+        ctr = clicks / impressions if impressions > 0 else 0.0
+        for metric, value in (
+            ("impressions_sum", impressions),
+            ("clicks_sum", clicks),
+            ("ctr_weighted", ctr),
+            ("position_weighted", weighted_position),
+        ):
+            store.append(
+                MetricSnapshot("topic", topic_id, metric, value, now, result.provider)
+            )
+        return
+
     metric_totals: dict[str, float] = {}
     new_repo_count_7d = 0.0
 
@@ -650,6 +677,10 @@ def run_pipeline(
     snapshot_path: str = ".radar/snapshots.jsonl",
     cache_path: str = ".radar/provider-cache.json",
     website: str | None = None,
+    gsc_site_url: str | None = None,
+    gsc_access_token: str | None = None,
+    gsc_query_filter: str | None = None,
+    providers: Sequence[DataProvider] | None = None,
 ) -> dict[str, Any]:
     request = CollectionRequest(topic=topic, limit=limit)
     resolver = default_resolver()
@@ -657,10 +688,22 @@ def run_pipeline(
 
     registry = ProviderRegistry()
     cache = EventCache(cache_path)
-    for provider in (GitHubProvider(), HackerNewsProvider(), GoogleNewsProvider(), GDELTProvider()):
+
+    base_providers = list(providers) if providers is not None else [
+        GitHubProvider(),
+        HackerNewsProvider(),
+        GoogleNewsProvider(),
+        GDELTProvider(),
+    ]
+    for provider in base_providers:
         registry.register(provider)
-    if website:
+
+    registered_ids = {provider.id for provider in registry.providers()}
+    if website and "website" not in registered_ids:
         registry.register(WebsiteProvider())
+        registered_ids.add("website")
+    if gsc_site_url and "gsc" not in registered_ids:
+        registry.register(GSCProvider())
 
     def collect(provider: DataProvider) -> CollectionResult:
         provider_request = request
@@ -669,6 +712,16 @@ def run_pipeline(
                 topic=topic,
                 limit=limit,
                 metadata={"url": website, "purpose": "competitor"},
+            )
+        elif provider.id == "gsc":
+            provider_request = CollectionRequest(
+                topic=topic,
+                limit=limit,
+                metadata={
+                    "site_url": gsc_site_url,
+                    "access_token": gsc_access_token,
+                    "query_filter": gsc_query_filter or topic,
+                },
             )
 
         result = registry.safe_collect(provider, provider_request)
@@ -714,12 +767,28 @@ def run_pipeline(
     signals = [
         event_to_signal(event, topic_node.id, resolver)
         for event in all_events
+        if event.provider != "gsc"
     ]
+
+    gsc_events = [event for event in all_events if event.provider == "gsc"]
+    if gsc_events:
+        signals.extend(
+            aggregate_gsc_topic_signals(
+                gsc_events,
+                topic_id=topic_node.id,
+                query_terms=[topic_node.name, *sorted(topic_node.aliases)],
+            )
+        )
+
     signals.extend(
         historical_momentum_signals(
             store=store,
             topic_id=topic_node.id,
-            provider_ids=[result.provider for result in results],
+            provider_ids=[
+                result.provider
+                for result in results
+                if result.provider != "gsc"
+            ],
         )
     )
 
@@ -763,6 +832,8 @@ def main() -> int:
     parser.add_argument("--snapshot-path", default=".radar/snapshots.jsonl")
     parser.add_argument("--cache-path", default=".radar/provider-cache.json")
     parser.add_argument("--website", help="Optional competitor/user website to add supply signals")
+    parser.add_argument("--gsc-site", help="Optional Search Console property, e.g. sc-domain:example.com")
+    parser.add_argument("--gsc-query-filter", help="Optional GSC query contains filter; defaults to topic")
     parser.add_argument("--compact", action="store_true")
     args = parser.parse_args()
 
@@ -772,6 +843,9 @@ def main() -> int:
         snapshot_path=args.snapshot_path,
         cache_path=args.cache_path,
         website=args.website,
+        gsc_site_url=args.gsc_site,
+        gsc_access_token=os.getenv("GSC_ACCESS_TOKEN"),
+        gsc_query_filter=args.gsc_query_filter,
     )
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2))
     return 0

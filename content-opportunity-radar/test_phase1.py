@@ -207,6 +207,20 @@ class Phase1Tests(unittest.TestCase):
             ],
         )
 
+    def test_opportunity_scoring_balances_providers_not_row_count(self):
+        rows = [
+            signal("github", 100, kind="demand", evidence=f"gh-{index}")
+            for index in range(100)
+        ]
+        rows.append(signal("hackernews", 0, kind="demand", evidence="hn-0"))
+
+        opportunity = score_opportunity(
+            topic_id="topic:ai-agents",
+            topic="AI Agents",
+            signals=rows,
+        )
+        self.assertEqual(opportunity.components["demand"], 50.0)
+
     def test_opportunity_score_is_explainable_and_evidence_backed(self):
         rows = [
             signal("github", 75, kind="momentum", evidence="repo-1"),

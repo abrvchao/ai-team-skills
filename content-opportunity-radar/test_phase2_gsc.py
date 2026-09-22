@@ -4,8 +4,9 @@ import json
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
-from core import CollectionRequest, ProviderState, RawEvent
-from gsc import GSCProvider, build_gsc_signals, summarize_gsc_queries
+from core import CollectionRequest, CollectionResult, DataProvider, ProviderState, RawEvent
+from gsc import GSCProvider, aggregate_gsc_topic_signals, build_gsc_signals, summarize_gsc_queries
+from pipeline import run_pipeline
 
 
 class FakeTransport:
@@ -22,6 +23,23 @@ class FakeTransport:
         if not self.responses:
             return {"rows": []}
         return self.responses.pop(0)
+
+
+class QuietProvider(DataProvider):
+    id = "quiet"
+
+    def collect(self, request: CollectionRequest):
+        return CollectionResult(provider=self.id, status=ProviderState.HEALTHY)
+
+
+def make_gsc_row(day: date, query: str, page: str, impressions: float, clicks: float, position: float):
+    return {
+        "keys": [day.isoformat(), query, page],
+        "clicks": clicks,
+        "impressions": impressions,
+        "ctr": clicks / impressions if impressions else 0.0,
+        "position": position,
+    }
 
 
 class GSCTests(unittest.TestCase):
@@ -188,6 +206,137 @@ class GSCTests(unittest.TestCase):
         self.assertEqual({signal.signal_type for signal in signals}, {"demand", "momentum", "authority"})
         self.assertTrue(all(signal.provider == "gsc" for signal in signals))
         self.assertTrue(all(signal.evidence_ids for signal in signals))
+
+
+    def test_many_gsc_queries_collapse_to_exactly_three_topic_signals(self):
+        rows = []
+        latest = date(2026, 9, 21)
+        start = latest - timedelta(days=34)
+        from core import AcquisitionMethod, Provenance, stable_id
+
+        for query_index in range(10):
+            query = f"ai agent tool {query_index}"
+            page = f"https://example.com/agents/{query_index}"
+            for offset in range(35):
+                day = start + timedelta(days=offset)
+                recent = day >= latest - timedelta(days=6)
+                impressions = 20 + query_index if recent else 10 + query_index
+                published = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+                event_id = stable_id("gsc-many", query, day.isoformat())
+                rows.append(RawEvent(
+                    id=event_id,
+                    provider="gsc",
+                    source="sc-domain:example.com",
+                    acquisition_method=AcquisitionMethod.OAUTH_API,
+                    retrieved_at=datetime(2026, 9, 22, tzinfo=timezone.utc),
+                    external_id=event_id,
+                    url=page,
+                    title=query,
+                    text=query,
+                    published_at=published,
+                    metrics={
+                        "clicks": 2.0,
+                        "impressions": float(impressions),
+                        "ctr": 2.0 / impressions,
+                        "position": 15.0,
+                    },
+                    raw={
+                        "dimensions": {
+                            "date": day.isoformat(),
+                            "query": query,
+                            "page": page,
+                        },
+                        "completeness": "top_rows_only_not_exhaustive",
+                    },
+                    provenance=Provenance("first_party_oauth_top_rows", "v3", "test"),
+                ))
+
+        signals = aggregate_gsc_topic_signals(
+            rows,
+            topic_id="topic:ai-agents",
+            query_terms=["AI Agent", "AI Agents"],
+        )
+        self.assertEqual(len(signals), 3)
+        self.assertEqual(
+            {signal.signal_type for signal in signals},
+            {"demand", "momentum", "authority"},
+        )
+        self.assertTrue(all(signal.provider == "gsc" for signal in signals))
+        self.assertGreater(len(signals[0].evidence_ids), 100)
+
+    def test_pipeline_without_gsc_keeps_existing_behavior(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report = run_pipeline(
+                topic="AI Agents",
+                providers=[QuietProvider()],
+                snapshot_path=str(Path(tmp) / "snapshots.jsonl"),
+                cache_path=str(Path(tmp) / "cache.json"),
+            )
+        self.assertNotIn("gsc", report["providers"])
+        self.assertIn("opportunity", report)
+
+    def test_pipeline_gsc_auth_required_does_not_fail_radar(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report = run_pipeline(
+                topic="AI Agents",
+                providers=[QuietProvider()],
+                gsc_site_url="sc-domain:example.com",
+                snapshot_path=str(Path(tmp) / "snapshots.jsonl"),
+                cache_path=str(Path(tmp) / "cache.json"),
+            )
+        self.assertEqual(report["providers"]["gsc"]["status"], "auth_required")
+        self.assertIn("opportunity", report)
+
+    def test_pipeline_uses_gsc_authority_without_row_overweighting(self):
+        import tempfile
+        from pathlib import Path
+
+        latest = date(2026, 9, 21)
+        start = latest - timedelta(days=34)
+        api_rows = []
+        for offset in range(35):
+            day = start + timedelta(days=offset)
+            recent = day >= latest - timedelta(days=6)
+            api_rows.append(
+                make_gsc_row(
+                    day,
+                    "ai agent tools",
+                    "https://example.com/agents",
+                    30 if recent else 10,
+                    4 if recent else 1,
+                    15 if recent else 22,
+                )
+            )
+
+        provider = GSCProvider(transport=FakeTransport([{"rows": api_rows}]))
+        with tempfile.TemporaryDirectory() as tmp:
+            report = run_pipeline(
+                topic="AI Agents",
+                providers=[provider],
+                gsc_site_url="sc-domain:example.com",
+                gsc_access_token="runtime-only-token",
+                snapshot_path=str(Path(tmp) / "snapshots.jsonl"),
+                cache_path=str(Path(tmp) / "cache.json"),
+            )
+
+        gsc_signals = [
+            signal for signal in report["signals"]
+            if signal["provider"] == "gsc"
+        ]
+        self.assertEqual(len(gsc_signals), 3)
+        self.assertEqual(
+            {signal["signal_type"] for signal in gsc_signals},
+            {"demand", "momentum", "authority"},
+        )
+        self.assertEqual(report["providers"]["gsc"]["status"], "healthy")
+        self.assertEqual(report["opportunity"]["components"]["authority_fit"], 70.0)
+        self.assertNotIn("runtime-only-token", json.dumps(report, ensure_ascii=False))
 
 
 if __name__ == "__main__":

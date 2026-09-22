@@ -46,15 +46,39 @@ def _mean(values: Iterable[float], default: float) -> float:
     return sum(xs) / len(xs) if xs else default
 
 
+def _provider_balanced_mean(
+    signals: Sequence[Signal],
+    signal_types: set[str] | None = None,
+    *,
+    field_name: str = "normalized_value",
+    default: float = 0.0,
+) -> float:
+    """Give each provider one vote regardless of how many rows it emitted."""
+    grouped: dict[str, list[float]] = {}
+    for signal in signals:
+        if signal_types is not None and signal.signal_type not in signal_types:
+            continue
+        grouped.setdefault(signal.provider, []).append(float(getattr(signal, field_name)))
+
+    provider_means = [_mean(values, default) for values in grouped.values()]
+    return _mean(provider_means, default)
+
+
 def _freshness(signals: Sequence[Signal]) -> float:
     if not signals:
         return 0.0
-    # Full score for <= 1h; decays linearly to zero by 7 days.
-    scores = [
-        clamp(100.0 * (1.0 - min(row.freshness_seconds, 604800) / 604800.0))
-        for row in signals
-    ]
-    return _mean(scores, 0.0)
+
+    grouped: dict[str, list[float]] = {}
+    for row in signals:
+        freshness_score = clamp(
+            100.0 * (1.0 - min(row.freshness_seconds, 604800) / 604800.0)
+        )
+        grouped.setdefault(row.provider, []).append(freshness_score)
+
+    return _mean(
+        (_mean(values, 0.0) for values in grouped.values()),
+        0.0,
+    )
 
 
 def score_opportunity(
@@ -68,39 +92,68 @@ def score_opportunity(
 ) -> Opportunity:
     """Score using observable signals only.
 
-    Missing Phase-2 dimensions default to neutral 50 and reduce confidence.
-    They are never hallucinated by an LLM.
+    Rows are aggregated within each provider before cross-provider averaging so
+    high-volume providers cannot dominate simply by emitting more events.
+    Missing dimensions use neutral 50 and reduce confidence; they are never
+    invented by an LLM.
     """
-    demand_rows = [
-        row.normalized_value for row in signals
-        if row.signal_type in {"demand", "question", "pain"}
-    ]
-    momentum_rows = [
-        row.normalized_value for row in signals
-        if row.signal_type in {"momentum", "media", "research"}
-    ]
-    supply_rows = [
-        row.normalized_value for row in signals if row.signal_type == "supply"
-    ]
+    demand = _provider_balanced_mean(
+        signals,
+        {"demand", "question", "pain"},
+        default=0.0,
+    )
+    momentum = _provider_balanced_mean(
+        signals,
+        {"momentum", "media", "research"},
+        default=0.0,
+    )
 
-    demand = _mean(demand_rows, 0.0)
-    momentum = _mean(momentum_rows, 0.0)
+    supply_signals = [row for row in signals if row.signal_type == "supply"]
+    authority_signals = [row for row in signals if row.signal_type == "authority"]
+    commercial_signals = [row for row in signals if row.signal_type == "commercial"]
+
+    supply_observed = supply_gap is not None or bool(supply_signals)
+    authority_observed = authority_fit is not None or bool(authority_signals)
+    business_observed = business_fit is not None or bool(commercial_signals)
 
     if supply_gap is None:
-        supply_gap = 100.0 - _mean(supply_rows, 50.0) if supply_rows else 50.0
+        supply_value = _provider_balanced_mean(
+            supply_signals,
+            {"supply"},
+            default=50.0,
+        )
+        supply_gap = 100.0 - supply_value if supply_signals else 50.0
+
     if authority_fit is None:
-        authority_fit = 50.0
+        authority_fit = _provider_balanced_mean(
+            authority_signals,
+            {"authority"},
+            default=50.0,
+        ) if authority_signals else 50.0
+
     if business_fit is None:
-        business_fit = 50.0
+        business_fit = _provider_balanced_mean(
+            commercial_signals,
+            {"commercial"},
+            default=50.0,
+        ) if commercial_signals else 50.0
 
     feature_summary = summarize_signals(signals)
-    observed_confidence = _mean((row.confidence for row in signals), 0.0)
-    missing_phase2 = sum(value is None for value in [])  # kept explicit for readability
-    phase2_penalty = 15.0 if not supply_rows else 8.0
+    observed_confidence = _provider_balanced_mean(
+        signals,
+        None,
+        field_name="confidence",
+        default=0.0,
+    )
+    missing_penalty = 5.0 * sum([
+        not supply_observed,
+        not authority_observed,
+        not business_observed,
+    ])
     confidence = clamp(
         0.55 * observed_confidence
         + 0.45 * feature_summary.cross_source_confirmation
-        - phase2_penalty
+        - missing_penalty
     )
     freshness = _freshness(signals)
 
@@ -125,10 +178,13 @@ def score_opportunity(
     if momentum >= 60:
         reasons.append("Cross-source momentum is elevated.")
     if demand >= 60:
-        reasons.append("Discussion/demand signals are elevated.")
-    if not supply_rows:
+        reasons.append("Cross-source demand is elevated.")
+    if not supply_observed:
         reasons.append("Supply-gap evidence is not yet connected; neutral value used.")
-    reasons.append("Authority/business dimensions are neutral until first-party Phase-2 data is connected.")
+    if not authority_observed:
+        reasons.append("Authority evidence is not yet connected; neutral value used.")
+    if not business_observed:
+        reasons.append("Business-fit evidence is not yet connected; neutral value used.")
 
     return Opportunity(
         topic_id=topic_id,
