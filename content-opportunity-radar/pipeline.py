@@ -546,10 +546,12 @@ def snapshot_events(
     now = result.collected_at
     store.append(MetricSnapshot("topic", topic_id, "event_count", len(result.events), now, result.provider))
 
-    engagement_sum = 0.0
+    metric_totals: dict[str, float] = {}
+    new_repo_count_7d = 0.0
+
     for event in result.events:
         for metric, value in event.metrics.items():
-            engagement_sum += float(value)
+            metric_totals[metric] = metric_totals.get(metric, 0.0) + float(value)
             if event.provider == "github" and metric in {"stars", "forks", "open_issues"}:
                 store.append(
                     MetricSnapshot(
@@ -561,7 +563,39 @@ def snapshot_events(
                         event.provider,
                     )
                 )
-    store.append(MetricSnapshot("topic", topic_id, "engagement_sum", engagement_sum, now, result.provider))
+
+        if (
+            event.provider == "github"
+            and isinstance(event.raw, dict)
+            and event.raw.get("kind") == "repository"
+            and event.published_at
+            and (now - event.published_at).total_seconds() <= 7 * 86400
+        ):
+            new_repo_count_7d += 1.0
+
+    for metric, total in sorted(metric_totals.items()):
+        store.append(
+            MetricSnapshot(
+                "topic",
+                topic_id,
+                f"{metric}_sum",
+                total,
+                now,
+                result.provider,
+            )
+        )
+
+    if result.provider == "github":
+        store.append(
+            MetricSnapshot(
+                "topic",
+                topic_id,
+                "new_repo_count_7d",
+                new_repo_count_7d,
+                now,
+                result.provider,
+            )
+        )
 
 
 def historical_momentum_signals(
