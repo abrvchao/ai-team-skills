@@ -1,7 +1,11 @@
-"""Phase-1 real-source pipeline for Content Opportunity Radar.
+"""Real-source pipeline for Content Opportunity Radar.
 
 Run:
     python pipeline.py --topic "AI Agents" --limit 10
+
+Optional first-party Search Console context:
+    GSC_ACCESS_TOKEN=... python pipeline.py --topic "AI Agents" \
+        --gsc-site "sc-domain:example.com"
 
 The pipeline never asks an LLM whether a trend exists. It collects raw evidence,
 persists metric snapshots, derives deterministic features, then scores the
