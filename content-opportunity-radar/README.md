@@ -107,3 +107,29 @@ The provider backfills a 35-day daily window and derives query-level:
 - authority from current ranking position and existing ranking pages
 
 Search Console documents that Search Analytics is subject to internal limits and does not guarantee every row. The provider therefore records `top_rows_only_not_exhaustive` provenance and uses confidence below 100 rather than treating the dataset as complete.
+
+
+## GSC → Opportunity integration
+
+When `--gsc-site` is supplied, the pipeline can add Search Console first-party context without changing the behavior of users who have not connected GSC.
+
+```bash
+export GSC_ACCESS_TOKEN=...
+python pipeline.py \
+  --topic "AI Agents" \
+  --gsc-site "sc-domain:example.com"
+```
+
+The token is runtime-only and is not accepted as a CLI argument.
+
+Search Console query rows are first summarized per query and then collapsed to **exactly three topic-level signals**:
+
+- Demand
+- Momentum
+- Authority
+
+This prevents a high-row-count source from receiving extra scoring weight. The Opportunity Engine also aggregates values within each provider before averaging across providers, so 100 GitHub rows do not count as 100 independent votes against 1 Hacker News or GSC signal.
+
+For this CLI integration, the GSC request defaults to a lightweight query-contains filter based on the topic. Production collection should instead ingest a site-level GSC window on a schedule and map that shared dataset to many Topic Graph nodes; it should not make a full Search Console request separately for every dashboard topic.
+
+CTR-gap and query/page-gap are intentionally deferred until the Site Content Graph can compare GSC evidence with hydrated page content.
