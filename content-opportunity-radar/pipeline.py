@@ -761,6 +761,7 @@ def main() -> int:
     parser.add_argument("--topic", default="AI Agents")
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--snapshot-path", default=".radar/snapshots.jsonl")
+    parser.add_argument("--cache-path", default=".radar/provider-cache.json")
     parser.add_argument("--website", help="Optional competitor/user website to add supply signals")
     parser.add_argument("--compact", action="store_true")
     args = parser.parse_args()
@@ -769,6 +770,7 @@ def main() -> int:
         topic=args.topic,
         limit=max(1, min(args.limit, 30)),
         snapshot_path=args.snapshot_path,
+        cache_path=args.cache_path,
         website=args.website,
     )
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2))
