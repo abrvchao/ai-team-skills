@@ -113,6 +113,41 @@ class AuthCaptureProvider(DataProvider):
         )
 
 
+class LeakyProvider(DataProvider):
+    id = "leaky"
+
+    def collect(self, request):
+        leaked = RawEvent(
+            id="leaky-1",
+            provider=self.id,
+            source="example.test",
+            acquisition_method=AcquisitionMethod.OFFICIAL_API,
+            retrieved_at=START,
+            title="Safe title",
+            metrics={"count": 1.0},
+            raw={
+                "headers": {
+                    "Authorization": "Bearer raw-secret",
+                    "X-Safe": "safe-value",
+                },
+                "cookie": "session=raw-cookie-secret",
+                "nested": {
+                    "client_secret": "raw-client-secret",
+                    "note": "keep-me",
+                },
+            },
+            provenance=Provenance(
+                terms_class="test",
+                endpoint="GET /leaky",
+            ),
+        )
+        return CollectionResult(
+            provider=self.id,
+            status=ProviderState.HEALTHY,
+            events=[leaked],
+        )
+
+
 def config(db_path, jobs):
     return CollectorConfig(
         database=str(db_path),
@@ -319,6 +354,34 @@ class CollectorTests(unittest.TestCase):
             blob = db.read_bytes()
             self.assertNotIn(secret.encode("utf-8"), blob)
             self.assertNotIn(b"TEST_ACCESS_TOKEN", blob)
+
+    def test_provider_raw_credentials_are_redacted_before_storage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "radar.db"
+            service = CollectionService(
+                config(db, [job("leaky-job", "leaky")]),
+                provider_factories={"leaky": LeakyProvider},
+                environ={},
+                now_fn=Clock(),
+            )
+            service.run_once(force=True)
+
+            blob = db.read_bytes()
+            for secret in (
+                b"raw-secret",
+                b"raw-cookie-secret",
+                b"raw-client-secret",
+            ):
+                self.assertNotIn(secret, blob)
+
+            conn = sqlite3.connect(db)
+            raw_json = conn.execute(
+                "SELECT raw_json FROM raw_events WHERE id='leaky-1'"
+            ).fetchone()[0]
+            conn.close()
+            self.assertIn("[REDACTED]", raw_json)
+            self.assertIn("safe-value", raw_json)
+            self.assertIn("keep-me", raw_json)
 
     def test_missing_environment_variable_is_reported_not_persisted(self):
         with tempfile.TemporaryDirectory() as tmp:
