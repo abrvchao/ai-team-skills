@@ -11,12 +11,14 @@ Current production design (2026):
 """
 from __future__ import annotations
 
+import calendar
 import json
 import math
 import os
 import re
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 
 from core import (
@@ -39,6 +41,18 @@ DEFAULT_API_VERSION = "v25"
 DEFAULT_GEO_TARGET = "2840"  # United States
 DEFAULT_LANGUAGE = "1000"  # English
 Transport = Callable[[str, Mapping[str, str], Mapping[str, Any]], dict[str, Any]]
+
+MONTHS = {
+    name: index
+    for index, name in enumerate(
+        (
+            "",
+            "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+            "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
+        )
+    )
+    if name
+}
 
 
 def _default_transport(
@@ -338,6 +352,44 @@ class KeywordPlannerProvider(DataProvider):
         )
 
 
+def _historical_freshness_seconds(
+    rows: Sequence[RawEvent],
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Age historical data by the newest monthly volume observation.
+
+    Retrieval time is not data time: Keyword Planner refreshes monthly, so a
+    response fetched seconds ago must not look like a real-time freshness signal.
+    """
+    now = now or utcnow()
+    latest: datetime | None = None
+    for event in rows:
+        raw = event.raw if isinstance(event.raw, dict) else {}
+        for item in raw.get("monthly_search_volumes") or []:
+            try:
+                year = int(item.get("year"))
+                month_raw = item.get("month")
+                if isinstance(month_raw, int):
+                    month = month_raw
+                else:
+                    month = MONTHS.get(str(month_raw or "").upper(), 0)
+                if year <= 0 or month not in range(1, 13):
+                    continue
+                last_day = calendar.monthrange(year, month)[1]
+                observed = datetime(
+                    year, month, last_day, 23, 59, 59, tzinfo=timezone.utc
+                )
+                if latest is None or observed > latest:
+                    latest = observed
+            except (TypeError, ValueError, OverflowError):
+                continue
+
+    if latest is None:
+        return 30 * 86400
+    return max(0, int((now - latest).total_seconds()))
+
+
 def _matches_terms(text: str, query_terms: Sequence[str]) -> bool:
     normalized = text.casefold().strip()
     if not query_terms:
@@ -395,6 +447,7 @@ def aggregate_keyword_planner_signals(
     observed_at = max(event.retrieved_at for event in rows)
     evidence_ids = sorted({event.id for event in rows})
     source = rows[0].source
+    data_freshness_seconds = _historical_freshness_seconds(rows)
 
     demand = Signal(
         id=stable_id("keyword-planner-demand", topic_id, *evidence_ids),
@@ -408,7 +461,7 @@ def aggregate_keyword_planner_signals(
         normalized_value=demand_score,
         confidence=86.0,
         evidence_ids=evidence_ids,
-        freshness_seconds=0,
+        freshness_seconds=data_freshness_seconds,
     )
     commercial = Signal(
         id=stable_id("keyword-planner-commercial", topic_id, *evidence_ids),
@@ -422,6 +475,6 @@ def aggregate_keyword_planner_signals(
         normalized_value=commercial_score,
         confidence=82.0,
         evidence_ids=evidence_ids,
-        freshness_seconds=0,
+        freshness_seconds=data_freshness_seconds,
     )
     return [demand, commercial]
