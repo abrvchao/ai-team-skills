@@ -636,7 +636,28 @@ def run_pipeline(
                 limit=limit,
                 metadata={"url": website, "purpose": "competitor"},
             )
-        return registry.safe_collect(provider, provider_request)
+
+        result = registry.safe_collect(provider, provider_request)
+        if result.events and result.status in {ProviderState.HEALTHY, ProviderState.DEGRADED}:
+            cache.save(provider.id, topic, result.events)
+            return result
+
+        if not result.events and result.status in {
+            ProviderState.FAILED,
+            ProviderState.RATE_LIMITED,
+            ProviderState.DEGRADED,
+        }:
+            stale_events = cache.load(provider.id, topic)
+            if stale_events:
+                return CollectionResult(
+                    provider=provider.id,
+                    status=ProviderState.STALE,
+                    events=stale_events,
+                    warnings=[*result.warnings, "using last successful cached events"],
+                    rate_limit=result.rate_limit,
+                )
+
+        return result
 
     results: list[CollectionResult] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(registry.providers()))) as pool:
