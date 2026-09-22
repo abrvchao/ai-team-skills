@@ -614,6 +614,7 @@ def run_pipeline(
     topic: str,
     limit: int = 10,
     snapshot_path: str = ".radar/snapshots.jsonl",
+    cache_path: str = ".radar/provider-cache.json",
     website: str | None = None,
 ) -> dict[str, Any]:
     request = CollectionRequest(topic=topic, limit=limit)
@@ -621,6 +622,7 @@ def run_pipeline(
     topic_node = resolver.resolve(topic)
 
     registry = ProviderRegistry()
+    cache = EventCache(cache_path)
     for provider in (GitHubProvider(), HackerNewsProvider(), GoogleNewsProvider(), GDELTProvider()):
         registry.register(provider)
     if website:
