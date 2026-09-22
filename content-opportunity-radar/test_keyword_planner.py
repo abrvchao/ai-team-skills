@@ -220,6 +220,7 @@ class KeywordPlannerTests(unittest.TestCase):
         )
         self.assertNotIn("momentum", {signal.signal_type for signal in signals})
         self.assertTrue(all(signal.evidence_ids for signal in signals))
+        self.assertTrue(all(signal.freshness_seconds > 0 for signal in signals))
 
     def test_pipeline_uses_commercial_signal_without_generic_momentum(self):
         with tempfile.TemporaryDirectory() as tmp:
