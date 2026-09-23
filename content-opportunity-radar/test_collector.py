@@ -201,6 +201,27 @@ class CollectorTests(unittest.TestCase):
                 }]
             })
 
+    def test_config_rejects_nested_and_token_shaped_literal_secrets(self):
+        cases = [
+            {"github_token": "do-not-store-me"},
+            {"headers": {"Authorization": "Bearer do-not-store-me"}},
+            {"auth": {"refresh_token": "do-not-store-me"}},
+            {"cookies": [{"session_cookie": "do-not-store-me"}]},
+            {"credentials": {"private_key": "do-not-store-me"}},
+        ]
+        for metadata in cases:
+            with self.subTest(metadata=metadata):
+                with self.assertRaises(ValueError):
+                    CollectorConfig.from_dict({
+                        "jobs": [{
+                            "id": "bad-nested",
+                            "provider": "gsc",
+                            "topic": "site",
+                            "interval_seconds": 3600,
+                            "metadata": metadata,
+                        }]
+                    })
+
     def test_first_run_executes_and_second_waits_until_due(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "radar.db"
