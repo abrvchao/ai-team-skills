@@ -8,11 +8,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from read_model import OpportunityReadStore
+from workspace import WorkspaceStore
 
 
 DEFAULT_DB = ".radar/radar.db"
@@ -130,6 +132,69 @@ def create_handler(database: str):
                         )
                     return
 
+                if path == "/v1/workspaces":
+                    try:
+                        with WorkspaceStore(
+                            database,
+                            initialize=False,
+                            read_only=True,
+                        ) as workspace_store:
+                            items = [
+                                item.to_dict()
+                                for item in workspace_store.list(include_disabled=False)
+                            ]
+                    except sqlite3.OperationalError:
+                        items = []
+                    self._json(200, {"items": items})
+                    return
+
+                if path.startswith("/v1/workspaces/"):
+                    suffix = path[len("/v1/workspaces/"):]
+                    parts = suffix.split("/")
+                    workspace_id = unquote(parts[0]).strip()
+                    if not workspace_id:
+                        self._error(400, "invalid_workspace", "workspace_id is required")
+                        return
+                    try:
+                        with WorkspaceStore(
+                            database,
+                            initialize=False,
+                            read_only=True,
+                        ) as workspace_store:
+                            workspace = workspace_store.get(workspace_id)
+                    except KeyError:
+                        self._error(404, "not_found", "workspace not found")
+                        return
+                    except sqlite3.OperationalError:
+                        self._error(404, "not_found", "workspace not found")
+                        return
+
+                    if len(parts) == 1:
+                        self._json(200, workspace.to_dict())
+                        return
+
+                    if len(parts) == 2 and parts[1] == "opportunities":
+                        limit = _int_param(
+                            query,
+                            "limit",
+                            20,
+                            minimum=1,
+                            maximum=100,
+                        )
+                        cursor = (query.get("cursor") or [None])[0]
+                        with self._store() as store:
+                            payload = store.list_opportunities(
+                                scope=workspace.scope,
+                                limit=limit,
+                                cursor=cursor,
+                                workspace_id=workspace.workspace_id,
+                            )
+                        self._json(200, payload)
+                        return
+
+                    self._error(404, "not_found", "endpoint not found")
+                    return
+
                 if path == "/v1/opportunities":
                     scope = (query.get("scope") or ["AI"])[0].strip() or "AI"
                     limit = _int_param(
@@ -140,11 +205,13 @@ def create_handler(database: str):
                         maximum=100,
                     )
                     cursor = (query.get("cursor") or [None])[0]
+                    workspace_id = (query.get("workspace_id") or [None])[0]
                     with self._store() as store:
                         payload = store.list_opportunities(
                             scope=scope,
                             limit=limit,
                             cursor=cursor,
+                            workspace_id=workspace_id,
                         )
                     self._json(200, payload)
                     return
@@ -157,10 +224,15 @@ def create_handler(database: str):
                         self._error(400, "invalid_topic", "topic_id is required")
                         return
                     scope = (query.get("scope") or [None])[0]
+                    workspace_id = (query.get("workspace_id") or [None])[0]
 
                     with self._store() as store:
                         if len(parts) == 1:
-                            item = store.get_opportunity(topic_id, scope=scope)
+                            item = store.get_opportunity(
+                                topic_id,
+                                scope=scope,
+                                workspace_id=workspace_id,
+                            )
                             if item is None:
                                 self._error(404, "not_found", "opportunity not found")
                                 return
@@ -178,6 +250,7 @@ def create_handler(database: str):
                             history = store.opportunity_history(
                                 topic_id,
                                 scope=scope,
+                                workspace_id=workspace_id,
                                 limit=limit,
                             )
                             if not history:
@@ -193,7 +266,11 @@ def create_handler(database: str):
                             return
 
                         if len(parts) == 2 and parts[1] == "research-pack":
-                            pack = store.research_pack(topic_id, scope=scope)
+                            pack = store.research_pack(
+                                topic_id,
+                                scope=scope,
+                                workspace_id=workspace_id,
+                            )
                             if pack is None:
                                 self._error(404, "not_found", "research pack not available")
                                 return

@@ -2,6 +2,8 @@
 
 const state = {
   scope: "AI",
+  workspaceId: "",
+  workspaces: [],
   opportunities: [],
   providers: [],
   selectedTopicId: null,
@@ -351,6 +353,12 @@ function renderResearchPack(pack) {
   });
 }
 
+function workspaceQuery() {
+  return state.workspaceId
+    ? `&workspace_id=${encodeURIComponent(state.workspaceId)}`
+    : "";
+}
+
 async function openOpportunity(topicId) {
   state.selectedTopicId = topicId;
   const panel = $("detail-panel");
@@ -362,9 +370,10 @@ async function openOpportunity(topicId) {
   try {
     const encoded = encodeURIComponent(topicId);
     const scope = encodeURIComponent(state.scope);
+    const workspace = workspaceQuery();
     const [detail, history] = await Promise.all([
-      api(`/v1/opportunities/${encoded}?scope=${scope}`),
-      api(`/v1/opportunities/${encoded}/history?scope=${scope}&limit=90`),
+      api(`/v1/opportunities/${encoded}?scope=${scope}${workspace}`),
+      api(`/v1/opportunities/${encoded}/history?scope=${scope}&limit=90${workspace}`),
     ]);
 
     if (state.selectedTopicId !== topicId) return;
@@ -393,7 +402,7 @@ async function openOpportunity(topicId) {
 
     if (detail.research_pack_available) {
       const pack = await api(
-        `/v1/opportunities/${encoded}/research-pack?scope=${scope}`
+        `/v1/opportunities/${encoded}/research-pack?scope=${scope}${workspace}`
       ).catch(() => null);
       renderResearchPack(pack);
     } else {
@@ -405,14 +414,41 @@ async function openOpportunity(topicId) {
   }
 }
 
+async function loadWorkspaces() {
+  const payload = await api("/v1/workspaces").catch(() => ({ items: [] }));
+  state.workspaces = payload.items || [];
+
+  const select = $("workspace-select");
+  const current = state.workspaceId;
+  while (select.options.length > 1) select.remove(1);
+
+  state.workspaces.forEach((workspace) => {
+    const option = document.createElement("option");
+    option.value = workspace.workspace_id;
+    option.textContent = workspace.name;
+    select.append(option);
+  });
+
+  if (current && state.workspaces.some((item) => item.workspace_id === current)) {
+    select.value = current;
+  } else if (current) {
+    state.workspaceId = "";
+    select.value = "";
+  }
+}
+
 async function loadDashboard() {
   clearError();
   $("opportunity-status").textContent = "Loading";
   $("opportunity-status").className = "status-pill neutral";
   try {
     const scope = encodeURIComponent(state.scope);
+    const opportunityPath = state.workspaceId
+      ? `/v1/workspaces/${encodeURIComponent(state.workspaceId)}/opportunities?limit=20`
+      : `/v1/opportunities?scope=${scope}&limit=20`;
+
     const [opportunities, providers] = await Promise.all([
-      api(`/v1/opportunities?scope=${scope}&limit=20`),
+      api(opportunityPath),
       api("/v1/providers"),
     ]);
     renderProviders(providers.items || []);
@@ -425,6 +461,23 @@ async function loadDashboard() {
     $("opportunity-status").className = "status-pill bad";
   }
 }
+
+$("workspace-select").addEventListener("change", () => {
+  state.workspaceId = $("workspace-select").value;
+  const workspace = state.workspaces.find(
+    (item) => item.workspace_id === state.workspaceId
+  );
+  if (workspace) {
+    state.scope = workspace.scope || "AI";
+    $("scope-input").value = state.scope;
+  }
+  $("detail-panel").hidden = true;
+  state.selectedTopicId = null;
+  (async () => {
+  await loadWorkspaces();
+  await loadDashboard();
+})();
+});
 
 $("scope-form").addEventListener("submit", (event) => {
   event.preventDefault();

@@ -694,6 +694,8 @@ def run_pipeline(
     *,
     topic: str,
     limit: int = 10,
+    language: str = "en",
+    country: str = "US",
     snapshot_path: str = ".radar/snapshots.jsonl",
     cache_path: str = ".radar/provider-cache.json",
     website: str | None = None,
@@ -711,7 +713,12 @@ def run_pipeline(
     content_crawler: SiteCrawler | None = None,
     providers: Sequence[DataProvider] | None = None,
 ) -> dict[str, Any]:
-    request = CollectionRequest(topic=topic, limit=limit)
+    request = CollectionRequest(
+        topic=topic,
+        limit=limit,
+        language=language,
+        country=country,
+    )
     resolver = default_resolver()
     topic_node = resolver.resolve(topic)
 
@@ -743,12 +750,16 @@ def run_pipeline(
             provider_request = CollectionRequest(
                 topic=topic,
                 limit=limit,
+                language=language,
+                country=country,
                 metadata={"url": website, "purpose": "competitor"},
             )
         elif provider.id == "gsc":
             provider_request = CollectionRequest(
                 topic=topic,
                 limit=limit,
+                language=language,
+                country=country,
                 metadata={
                     "site_url": gsc_site_url,
                     "access_token": gsc_access_token,
@@ -759,6 +770,8 @@ def run_pipeline(
             provider_request = CollectionRequest(
                 topic=topic,
                 limit=limit,
+                language=language,
+                country=country,
                 metadata={
                     "customer_id": google_ads_customer_id,
                     "access_token": google_ads_access_token,
@@ -917,6 +930,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Content Opportunity Radar Phase-1 demo")
     parser.add_argument("--topic", default="AI Agents")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--language", default="en")
+    parser.add_argument("--country", default="US")
     parser.add_argument("--snapshot-path", default=".radar/snapshots.jsonl")
     parser.add_argument("--cache-path", default=".radar/provider-cache.json")
     parser.add_argument("--website", help="Optional competitor/user website to add supply signals")
@@ -945,6 +960,8 @@ def main() -> int:
     report = run_pipeline(
         topic=args.topic,
         limit=max(1, min(args.limit, 30)),
+        language=args.language,
+        country=args.country,
         snapshot_path=args.snapshot_path,
         cache_path=args.cache_path,
         website=args.website,

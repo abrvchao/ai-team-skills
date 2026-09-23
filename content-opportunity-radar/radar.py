@@ -68,6 +68,9 @@ def collect_seed_events(
     providers: Sequence[DataProvider] | None = None,
     collector_db: str | None = None,
     collector_since_hours: int = 72,
+    collector_job_prefix: str | None = None,
+    language: str = "en",
+    country: str = "US",
 ) -> DiscoverySeed:
     """Collect broad source evidence used only to propose candidate topics.
 
@@ -93,6 +96,7 @@ def collect_seed_events(
                 stored_events = store.recent_events(
                     since=since,
                     providers=seed_providers,
+                    job_prefix=collector_job_prefix,
                     limit=max(500, min(50000, limit * 200)),
                 )
         except Exception as exc:
@@ -146,12 +150,16 @@ def collect_seed_events(
             request = CollectionRequest(
                 topic=scope,
                 limit=limit,
+                language=language,
+                country=country,
                 metadata={"url": website, "purpose": "discovery"},
             )
         elif provider.id == "gsc":
             request = CollectionRequest(
                 topic=scope,
                 limit=limit,
+                language=language,
+                country=country,
                 metadata={
                     "site_url": gsc_site_url,
                     "access_token": gsc_access_token,
@@ -162,7 +170,12 @@ def collect_seed_events(
                 },
             )
         else:
-            request = CollectionRequest(topic=scope, limit=limit)
+            request = CollectionRequest(
+                topic=scope,
+                limit=limit,
+                language=language,
+                country=country,
+            )
         return registry.safe_collect(provider, request)
 
     results: list[CollectionResult] = []
@@ -208,10 +221,14 @@ def _candidate_scan(
     hydrate_content: bool,
     content_max_pages: int,
     content_snapshot_path: str,
+    language: str,
+    country: str,
 ) -> dict[str, Any]:
     report = run_pipeline(
         topic=candidate.name,
         limit=limit,
+        language=language,
+        country=country,
         snapshot_path=snapshot_path,
         cache_path=cache_path,
         website=website,
@@ -288,7 +305,11 @@ def run_discovery(
     seed_providers: Sequence[DataProvider] | None = None,
     collector_db: str | None = None,
     collector_since_hours: int = 72,
+    collector_job_prefix: str | None = None,
     read_model_db: str | None = None,
+    workspace_id: str | None = None,
+    language: str = "en",
+    country: str = "US",
     include_research_pack: bool = False,
 ) -> dict[str, Any]:
     seed = collect_seed_events(
@@ -300,6 +321,9 @@ def run_discovery(
         providers=seed_providers,
         collector_db=collector_db,
         collector_since_hours=collector_since_hours,
+        collector_job_prefix=collector_job_prefix,
+        language=language,
+        country=country,
     )
     candidates = discover_candidates(
         seed.events,
@@ -332,6 +356,8 @@ def run_discovery(
                     hydrate_content=hydrate_content,
                     content_max_pages=max(1, min(content_max_pages, 100)),
                     content_snapshot_path=content_snapshot_path,
+                    language=language,
+                    country=country,
                 )
             )
         except Exception as exc:
@@ -354,6 +380,7 @@ def run_discovery(
 
     output = {
         "mode": "discovery",
+        "workspace_id": workspace_id,
         "scope": scope,
         "seed": seed.to_dict(),
         "candidate_count": len(candidates),
@@ -380,6 +407,9 @@ def main() -> int:
         help="Run automatic candidate discovery (default behavior of this command)",
     )
     parser.add_argument("--scope", default="AI", help="Broad domain used for seed collection")
+    parser.add_argument("--workspace-id")
+    parser.add_argument("--language", default="en")
+    parser.add_argument("--country", default="US")
     parser.add_argument("--seed-limit", type=int, default=20)
     parser.add_argument("--candidates", type=int, default=8)
     parser.add_argument("--top", type=int, default=5)
@@ -439,6 +469,9 @@ def main() -> int:
         collector_db=args.collector_db,
         collector_since_hours=args.collector_since_hours,
         read_model_db=args.read_model_db,
+        workspace_id=args.workspace_id,
+        language=args.language,
+        country=args.country,
         include_research_pack=args.research_pack,
     )
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2))
