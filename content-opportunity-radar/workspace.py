@@ -96,10 +96,14 @@ def normalize_gsc_site(value: str | None) -> str | None:
     if not raw:
         return None
     if raw.startswith("sc-domain:"):
-        domain = raw[len("sc-domain:"):].strip().casefold()
-        if not domain or "/" in domain or " " in domain:
+        domain = raw[len("sc-domain:"):].strip()
+        if not domain or "/" in domain or " " in domain or ":" in domain:
             raise ValueError("invalid sc-domain Search Console property")
-        return f"sc-domain:{domain}"
+        normalized = normalize_site_url(f"https://{domain}", required=True)
+        host = urlparse(normalized).hostname
+        if not host:
+            raise ValueError("invalid sc-domain Search Console property")
+        return f"sc-domain:{host}"
     return normalize_site_url(raw, required=True)
 
 
@@ -537,6 +541,7 @@ def run_workspace(
         content_snapshot_path=str(base / "page-snapshots.jsonl"),
         collector_db=database,
         collector_since_hours=72,
+        collector_job_prefix=f"{workspace.workspace_id}-",
         read_model_db=database,
         workspace_id=workspace.workspace_id,
         include_research_pack=True,
