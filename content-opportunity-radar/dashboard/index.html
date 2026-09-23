@@ -18,10 +18,20 @@
         </div>
       </div>
       <form id="scope-form" class="scope-form">
-        <label for="scope-input">Radar scope</label>
-        <div class="scope-control">
-          <input id="scope-input" name="scope" value="AI" autocomplete="off" maxlength="80">
-          <button type="submit">Scan view</button>
+        <div>
+          <label for="workspace-select">Workspace</label>
+          <div class="scope-control">
+            <select id="workspace-select" name="workspace">
+              <option value="">Legacy / unscoped</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="scope-input">Radar scope</label>
+          <div class="scope-control">
+            <input id="scope-input" name="scope" value="AI" autocomplete="off" maxlength="80">
+            <button type="submit">Scan view</button>
+          </div>
         </div>
       </form>
     </header>
