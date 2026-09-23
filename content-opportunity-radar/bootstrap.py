@@ -24,9 +24,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from api import serve as serve_api
-from collector import CollectionService, CollectorConfig
+from collector import CollectionService, CollectorConfig, RadarStore
 from radar import run_discovery
-from read_model import safe_warning
+from read_model import OpportunityReadStore, safe_warning
+from workspace import WorkspaceStore
 
 
 DEFAULT_CONFIG = ".radar/local-collection-plan.json"
@@ -214,6 +215,27 @@ def doctor(
     }
 
 
+def prepare(
+    *,
+    database: str = DEFAULT_DB,
+) -> dict[str, Any]:
+    """Initialize/migrate every local SQLite schema without network access."""
+    with RadarStore(database) as collector_store:
+        collector_counts = collector_store.counts()
+    with OpportunityReadStore(database) as read_store:
+        read_health = read_store.health()
+    with WorkspaceStore(database) as workspace_store:
+        workspace_count = len(workspace_store.list())
+
+    return {
+        "database": database,
+        "collector": collector_counts,
+        "read_model": read_health,
+        "workspaces": workspace_count,
+        "network_used": False,
+    }
+
+
 def collect(
     *,
     config_path: str | Path = DEFAULT_CONFIG,
@@ -342,6 +364,12 @@ def main() -> int:
     doctor_parser.add_argument("--config", default=DEFAULT_CONFIG)
     doctor_parser.add_argument("--db", default=DEFAULT_DB)
 
+    prepare_parser = sub.add_parser(
+        "prepare",
+        help="Initialize/migrate local Radar schemas without network access",
+    )
+    prepare_parser.add_argument("--db", default=DEFAULT_DB)
+
     init_parser = sub.add_parser("init", help="Create safe public-source local config")
     init_parser.add_argument("--scope", default="AI")
     init_parser.add_argument("--config", default=DEFAULT_CONFIG)
@@ -381,6 +409,10 @@ def main() -> int:
         )
         _print(result)
         return 0 if result["ready"] else 1
+
+    if args.command == "prepare":
+        _print(prepare(database=args.db))
+        return 0
 
     if args.command == "init":
         _print(
