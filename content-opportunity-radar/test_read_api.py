@@ -33,7 +33,7 @@ def evidence(event_id: str, provider: str = "github") -> dict:
         "country": "US",
         "metrics": {"stars": 42},
         "provenance": {
-            "endpoint": "GET /search",
+            "endpoint": "https://api.example.test/search?access_token=endpoint-secret",
             "api_version": "v1",
             "access_token": "must-not-leak",
         },
@@ -152,9 +152,11 @@ class ReadModelTests(unittest.TestCase):
                 self.assertEqual(item["source_summary"][0]["provider"], "github")
 
                 row = store.get_evidence("e1")
-                self.assertEqual(row["provenance"]["endpoint"], "GET /search")
+                self.assertIn("[REDACTED]", row["provenance"]["endpoint"])
                 self.assertEqual(row["provenance"]["access_token"], "[REDACTED]")
-                self.assertNotIn("must-not-leak", db.read_bytes().decode("utf-8", errors="ignore"))
+                blob = db.read_bytes().decode("utf-8", errors="ignore")
+                self.assertNotIn("must-not-leak", blob)
+                self.assertNotIn("endpoint-secret", blob)
                 self.assertIsNone(store.get_evidence("missing"))
 
                 pack = store.research_pack("topic:a", scope="AI")
