@@ -626,6 +626,7 @@ class RadarStore:
         *,
         since: datetime,
         providers: Sequence[str] | None = None,
+        job_prefix: str | None = None,
         limit: int = 5000,
     ) -> list[RawEvent]:
         """Return latest deduped events observed since a cutoff.
@@ -633,12 +634,29 @@ class RadarStore:
         This is intentionally a latest-state event view. Historical metric
         movement remains in event_observations / metric_snapshots.
         """
-        params: list[Any] = [isoformat(since)]
+        cutoff = isoformat(since)
+        params: list[Any] = [cutoff]
         where = ["last_seen_at >= ?"]
         if providers:
             placeholders = ",".join("?" for _ in providers)
             where.append(f"provider IN ({placeholders})")
             params.extend(providers)
+        if job_prefix:
+            # Workspace-scoped seed discovery must use observations produced by
+            # that workspace's collection jobs, not merely globally deduped
+            # raw_events whose last_seen_at may come from another workspace.
+            where.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM event_observations eo
+                    WHERE eo.event_id = raw_events.id
+                      AND eo.job_id LIKE ?
+                      AND eo.observed_at >= ?
+                )
+                """
+            )
+            params.extend([f"{job_prefix}%", cutoff])
         params.append(max(1, min(int(limit), 50000)))
 
         rows = self.conn.execute(
