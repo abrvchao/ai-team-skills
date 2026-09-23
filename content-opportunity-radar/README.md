@@ -335,6 +335,62 @@ python bootstrap.py serve
 Bootstrap never prints credential values. Optional tokens are reported by
 `doctor` as present/absent only.
 
+## Workspace + Domain Onboarding V1
+
+Create a workspace for one primary site/customer context:
+
+```bash
+python workspace.py --db .radar/radar.db create \
+  --name "Acme Content" \
+  --scope "AI Agents" \
+  --domain https://example.com \
+  --audience "engineering leaders" \
+  --objective "qualified leads" \
+  --country US \
+  --language en \
+  --competitor https://competitor-a.com \
+  --competitor https://competitor-b.com
+```
+
+Optional first-party context:
+
+```bash
+python workspace.py --db .radar/radar.db create \
+  --name "Acme Content" \
+  --scope "AI Agents" \
+  --domain https://example.com \
+  --gsc-site sc-domain:example.com \
+  --google-ads-customer 123-456-7890
+```
+
+Credentials are never stored in the workspace profile or generated collection
+plan. Runtime integrations use environment variables such as
+`GSC_ACCESS_TOKEN` and `GOOGLE_ADS_ACCESS_TOKEN`.
+
+Inspect the generated collector plan:
+
+```bash
+python workspace.py --db .radar/radar.db plan <workspace_id>
+```
+
+Run collection + Radar + persisted Research Pack for that workspace:
+
+```bash
+GSC_ACCESS_TOKEN=... \
+GOOGLE_ADS_ACCESS_TOKEN=... \
+python workspace.py --db .radar/radar.db run <workspace_id> --top 5
+```
+
+Then start the existing read-only API/Dashboard:
+
+```bash
+python api.py --db .radar/radar.db --host 127.0.0.1 --port 8787
+```
+
+The Dashboard workspace selector reads `GET /v1/workspaces` and keeps Top
+Opportunities, detail, history and Research Pack queries inside the selected
+workspace. Legacy unscoped Radar runs remain separately queryable.
+
 ## Opportunity Read Model + API V1
 
 The product-facing API reads durable Radar results; it never triggers external
