@@ -460,6 +460,9 @@ def main() -> int:
         return 0
 
     if args.command == "serve":
+        # Safe for an empty persistent volume: schema preparation is local-only
+        # and idempotent, then the HTTP process remains strictly read-only.
+        prepare(database=args.db)
         serve_api(
             database=args.db,
             host=args.host,
