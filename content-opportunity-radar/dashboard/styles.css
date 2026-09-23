@@ -107,7 +107,7 @@ h4 {
 
 .scope-form {
   display: flex;
-  align-items: center;
+  align-items: end;
   gap: 12px;
 }
 
@@ -124,12 +124,23 @@ h4 {
   background: rgba(255,255,255,.03);
 }
 
-.scope-control input {
+.scope-control input,
+.scope-control select {
   width: 170px;
   border: 0;
   outline: 0;
   padding: 10px 12px;
   background: transparent;
+  color: var(--text);
+}
+
+.scope-control select {
+  width: 210px;
+  appearance: none;
+}
+
+.scope-control option {
+  background: var(--surface);
   color: var(--text);
 }
 
@@ -541,7 +552,9 @@ h4 {
   .app-shell { width: min(100% - 24px, 1480px); }
   .topbar { align-items: flex-start; flex-direction: column; padding: 18px 0; }
   .scope-form { width: 100%; align-items: stretch; flex-direction: column; }
-  .scope-control input { width: 100%; }
+  .scope-form > div { width: 100%; }
+  .scope-control input,
+  .scope-control select { width: 100%; }
   .hero { padding-top: 36px; }
   .hero-metrics { grid-template-columns: 1fr; }
   .provider-list { grid-template-columns: 1fr; }
