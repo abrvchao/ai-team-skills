@@ -327,6 +327,9 @@ Start the read-only API:
 python api.py --db .radar/radar.db --host 127.0.0.1 --port 8787
 ```
 
+Open `http://127.0.0.1:8787/` for Dashboard V1. The static dashboard is served
+from an exact route whitelist and consumes only the read-only `/v1/*` API.
+
 V1 endpoints:
 
 ```text
