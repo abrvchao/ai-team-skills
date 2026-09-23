@@ -304,6 +304,50 @@ python radar.py \
 
 When recent stored seed events are available, the Radar does not re-hit broad GitHub/HN/News/GDELT/GSC/website sources for candidate generation. Shortlisted candidates still receive evidence-specific deep scans, preserving freshness while reducing quota pressure and creating a reusable historical signal dataset.
 
+## Opportunity Read Model + API V1
+
+The product-facing API reads durable Radar results; it never triggers external
+provider collection from an HTTP request.
+
+Persist a discovery run into the product read model:
+
+```bash
+python radar.py \
+  --discover \
+  --scope "AI" \
+  --collector-db .radar/radar.db \
+  --read-model-db .radar/radar.db \
+  --research-pack \
+  --top 5
+```
+
+Start the read-only API:
+
+```bash
+python api.py --db .radar/radar.db --host 127.0.0.1 --port 8787
+```
+
+V1 endpoints:
+
+```text
+GET /v1/health
+GET /v1/providers
+GET /v1/opportunities?scope=AI&limit=20
+GET /v1/opportunities/{topic_id}
+GET /v1/opportunities/{topic_id}/history
+GET /v1/opportunities/{topic_id}/research-pack
+GET /v1/evidence/{evidence_id}
+```
+
+The API opens SQLite in read-only/query-only mode. Top Opportunity snapshots are
+append-only and retain score components, reasons, source summaries, evidence IDs
+and history. Evidence referenced by a ranked opportunity is copied into a safe
+Radar evidence snapshot so drill-down remains available even when the evidence
+came from a live deep scan rather than the broad persistent collector.
+
+Write methods return HTTP 405. The API contract does not expose collector request
+metadata or raw credential-bearing provider payloads.
+
 ## Opportunity Discovery Loop V1
 
 `radar.py` turns the single-topic pipeline into an actual Radar:
