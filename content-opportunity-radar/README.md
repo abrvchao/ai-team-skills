@@ -237,6 +237,73 @@ Unknown/unhydrated pages are treated as **unknown**, not as a proven content gap
 
 The `SiteCrawler` and page graph are generic and can be reused for competitor URLs discovered by the Phase-1 WebsiteProvider. Multi-competitor scheduling and competitor-level supply aggregation are intentionally a separate follow-up rather than expanding this module into a full SEO crawler.
 
+## Persistent Collection Service V1
+
+`collector.py` turns source acquisition into a durable scheduled process instead of a dashboard-time API fan-out.
+
+Initialize from the safe example plan:
+
+```bash
+cp collection-plan.example.json collection-plan.json
+python collector.py init --config collection-plan.json
+python collector.py run-once --config collection-plan.json
+python collector.py status --config collection-plan.json
+```
+
+For a continuously running worker:
+
+```bash
+python collector.py loop --config collection-plan.json --poll-seconds 30
+```
+
+The SQLite store keeps separate layers:
+
+```
+raw_events
+  → deduped latest source identity/content
+
+event_observations
+  → append-only per-collection observations
+
+metric_snapshots
+  → append-only metric history
+
+collection_runs
+  → provider health / warnings / rate limits
+
+job_state
+  → next due time / failure backoff / rate-limit reset
+```
+
+Credential rules:
+
+- secrets must not be written directly under job `metadata`
+- use `metadata_env` to reference environment-variable names
+- request metadata is never persisted
+- credential-shaped keys found inside provider raw payloads are recursively redacted before SQLite storage
+- GSC / Google Ads access tokens remain runtime-only
+
+Scheduling rules:
+
+- healthy/degraded/stale jobs return to their configured interval
+- hard failures use bounded exponential backoff
+- rate-limited jobs respect provider reset time when available
+- auth/disabled jobs do not stop unrelated collectors
+- one job failure never prevents other due jobs from running
+
+The collector deliberately separates **broad acquisition** from **opportunity analysis**. Radar discovery can reuse recent stored events:
+
+```bash
+python radar.py \
+  --discover \
+  --scope "AI" \
+  --collector-db .radar/radar.db \
+  --collector-since-hours 72 \
+  --top 5
+```
+
+When recent stored seed events are available, the Radar does not re-hit broad GitHub/HN/News/GDELT/GSC/website sources for candidate generation. Shortlisted candidates still receive evidence-specific deep scans, preserving freshness while reducing quota pressure and creating a reusable historical signal dataset.
+
 ## Opportunity Discovery Loop V1
 
 `radar.py` turns the single-topic pipeline into an actual Radar:

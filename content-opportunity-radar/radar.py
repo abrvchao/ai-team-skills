@@ -12,9 +12,11 @@ import argparse
 import concurrent.futures
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any, Sequence
 
+from collector import RadarStore
 from core import (
     CollectionRequest,
     CollectionResult,
@@ -43,11 +45,15 @@ from web import WebsiteProvider
 class DiscoverySeed:
     events: list
     providers: dict[str, dict[str, Any]]
+    source_mode: str = "live"
+    warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_count": len(self.events),
             "providers": self.providers,
+            "source_mode": self.source_mode,
+            "warnings": self.warnings,
         }
 
 
@@ -59,8 +65,64 @@ def collect_seed_events(
     gsc_site_url: str | None = None,
     gsc_access_token: str | None = None,
     providers: Sequence[DataProvider] | None = None,
+    collector_db: str | None = None,
+    collector_since_hours: int = 72,
 ) -> DiscoverySeed:
-    """Collect broad source evidence used only to propose candidate topics."""
+    """Collect broad source evidence used only to propose candidate topics.
+
+    If a persistent collector database has recent events, seed discovery reads
+    those deduped events instead of re-hitting broad source APIs. Deep scans of
+    shortlisted candidates remain live/evidence-specific.
+    """
+    seed_warnings: list[str] = []
+    if collector_db:
+        since = utcnow() - timedelta(
+            hours=max(1, min(int(collector_since_hours), 24 * 365))
+        )
+        seed_providers = [
+            "github",
+            "hackernews",
+            "google_news",
+            "gdelt",
+            "gsc",
+            "website",
+        ]
+        try:
+            with RadarStore(collector_db) as store:
+                stored_events = store.recent_events(
+                    since=since,
+                    providers=seed_providers,
+                    limit=max(500, min(50000, limit * 200)),
+                )
+        except Exception as exc:
+            stored_events = []
+            seed_warnings.append(
+                f"collector store unavailable; live seed fallback: {type(exc).__name__}: {exc}"
+            )
+
+        if stored_events:
+            stored_events = dedupe_news(stored_events)
+            counts: dict[str, int] = {}
+            for event in stored_events:
+                counts[event.provider] = counts.get(event.provider, 0) + 1
+            return DiscoverySeed(
+                events=stored_events,
+                providers={
+                    provider: {
+                        "status": "stored",
+                        "event_count": count,
+                        "warnings": [],
+                    }
+                    for provider, count in sorted(counts.items())
+                },
+                source_mode="collector_store",
+                warnings=seed_warnings,
+            )
+
+        seed_warnings.append(
+            "collector store had no recent seed events; live seed collection used"
+        )
+
     registry = ProviderRegistry()
     base = list(providers) if providers is not None else [
         GitHubProvider(),
@@ -120,7 +182,12 @@ def collect_seed_events(
         }
         for result in results
     }
-    return DiscoverySeed(events=events, providers=summary)
+    return DiscoverySeed(
+        events=events,
+        providers=summary,
+        source_mode="live",
+        warnings=seed_warnings,
+    )
 
 
 def _candidate_scan(
@@ -218,6 +285,8 @@ def run_discovery(
     content_max_pages: int = 20,
     content_snapshot_path: str = ".radar/page-snapshots.jsonl",
     seed_providers: Sequence[DataProvider] | None = None,
+    collector_db: str | None = None,
+    collector_since_hours: int = 72,
     include_research_pack: bool = False,
 ) -> dict[str, Any]:
     seed = collect_seed_events(
@@ -227,6 +296,8 @@ def run_discovery(
         gsc_site_url=gsc_site_url,
         gsc_access_token=gsc_access_token,
         providers=seed_providers,
+        collector_db=collector_db,
+        collector_since_hours=collector_since_hours,
     )
     candidates = discover_candidates(
         seed.events,
@@ -315,6 +386,16 @@ def main() -> int:
     parser.add_argument("--content-max-pages", type=int, default=20)
     parser.add_argument("--content-snapshot-path", default=".radar/page-snapshots.jsonl")
     parser.add_argument(
+        "--collector-db",
+        help="Use recent persistent collector events for broad seed discovery",
+    )
+    parser.add_argument(
+        "--collector-since-hours",
+        type=int,
+        default=72,
+        help="Maximum age of stored seed events",
+    )
+    parser.add_argument(
         "--research-pack",
         action="store_true",
         help="Attach a provenance-first Research Pack to each Top Opportunity",
@@ -341,6 +422,8 @@ def main() -> int:
         hydrate_content=args.hydrate_content,
         content_max_pages=args.content_max_pages,
         content_snapshot_path=args.content_snapshot_path,
+        collector_db=args.collector_db,
+        collector_since_hours=args.collector_since_hours,
         include_research_pack=args.research_pack,
     )
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2))
