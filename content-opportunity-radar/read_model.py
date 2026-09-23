@@ -211,9 +211,6 @@ class OpportunityReadStore:
             CREATE INDEX IF NOT EXISTS idx_radar_runs_scope_time
             ON radar_runs(scope, generated_at DESC, run_id DESC);
 
-            CREATE INDEX IF NOT EXISTS idx_radar_runs_workspace_scope_time
-            ON radar_runs(workspace_id, scope, generated_at DESC, run_id DESC);
-
             CREATE TABLE IF NOT EXISTS opportunity_snapshots (
                 snapshot_id TEXT PRIMARY KEY,
                 run_id TEXT NOT NULL,
@@ -242,9 +239,6 @@ class OpportunityReadStore:
 
             CREATE INDEX IF NOT EXISTS idx_opportunity_scope_rank
             ON opportunity_snapshots(scope, run_id, rank, topic_id);
-
-            CREATE INDEX IF NOT EXISTS idx_opportunity_workspace_scope_rank
-            ON opportunity_snapshots(workspace_id, scope, run_id, rank, topic_id);
 
             CREATE INDEX IF NOT EXISTS idx_opportunity_topic_time
             ON opportunity_snapshots(topic_id, created_at DESC, snapshot_id DESC);
