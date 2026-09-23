@@ -304,6 +304,37 @@ python radar.py \
 
 When recent stored seed events are available, the Radar does not re-hit broad GitHub/HN/News/GDELT/GSC/website sources for candidate generation. Shortlisted candidates still receive evidence-specific deep scans, preserving freshness while reducing quota pressure and creating a reusable historical signal dataset.
 
+## Bootstrap / Local Demo V1
+
+The shortest public-source demo path is:
+
+```bash
+python bootstrap.py doctor
+python bootstrap.py demo --scope "AI"
+python bootstrap.py serve
+```
+
+Then open:
+
+`http://127.0.0.1:8787/`
+
+`demo` creates a safe local collection plan when needed, force-runs the public
+GitHub / Hacker News / Google News / GDELT collectors, runs Opportunity Discovery,
+persists the Read Model + Research Packs, and prints a concise provider/opportunity
+summary. A degraded provider does not abort the demo.
+
+For step-by-step control:
+
+```bash
+python bootstrap.py init --scope "AI"
+python bootstrap.py collect --force
+python bootstrap.py radar --scope "AI"
+python bootstrap.py serve
+```
+
+Bootstrap never prints credential values. Optional tokens are reported by
+`doctor` as present/absent only.
+
 ## Opportunity Read Model + API V1
 
 The product-facing API reads durable Radar results; it never triggers external
