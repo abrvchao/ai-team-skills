@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Content Opportunity Radar">
+  <title>SignalDesk — Content Opportunity Radar</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">S</div>
+        <div>
+          <div class="eyebrow">Signal Intelligence Engine</div>
+          <h1>Content Opportunity Radar</h1>
+        </div>
+      </div>
+      <form id="scope-form" class="scope-form">
+        <label for="scope-input">Radar scope</label>
+        <div class="scope-control">
+          <input id="scope-input" name="scope" value="AI" autocomplete="off" maxlength="80">
+          <button type="submit">Scan view</button>
+        </div>
+      </form>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <div class="eyebrow">Top Opportunities Today</div>
+          <h2>先看值得做什么，再决定写什么。</h2>
+          <p id="run-summary" class="muted">正在读取 Radar 历史结果…</p>
+        </div>
+        <div class="hero-metrics" aria-label="Radar summary">
+          <div class="metric-tile">
+            <span class="metric-label">Opportunities</span>
+            <strong id="metric-opportunities">—</strong>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Providers</span>
+            <strong id="metric-providers">—</strong>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Last run</span>
+            <strong id="metric-last-run">—</strong>
+          </div>
+        </div>
+      </section>
+
+      <div id="global-error" class="notice error" hidden></div>
+
+      <div class="dashboard-grid">
+        <section class="panel opportunities-panel" aria-labelledby="opportunities-title">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow">Priority queue</div>
+              <h3 id="opportunities-title">Top Opportunities</h3>
+            </div>
+            <span id="opportunity-status" class="status-pill neutral">Loading</span>
+          </div>
+          <div id="opportunity-list" class="opportunity-list" aria-live="polite"></div>
+          <div id="empty-state" class="empty-state" hidden>
+            <strong>还没有可展示的机会。</strong>
+            <p>先运行一次 Radar，并把结果写入 Read Model：</p>
+            <code>python radar.py --discover --scope "AI" --read-model-db .radar/radar.db --research-pack</code>
+          </div>
+        </section>
+
+        <aside class="panel provider-panel" aria-labelledby="provider-title">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow">Acquisition health</div>
+              <h3 id="provider-title">Data Providers</h3>
+            </div>
+          </div>
+          <div id="provider-list" class="provider-list"></div>
+        </aside>
+      </div>
+
+      <section id="detail-panel" class="panel detail-panel" hidden aria-labelledby="detail-title">
+        <div class="detail-header">
+          <div>
+            <div id="detail-rank" class="eyebrow">Opportunity detail</div>
+            <h3 id="detail-title">—</h3>
+            <p id="detail-subtitle" class="muted"></p>
+          </div>
+          <button id="close-detail" class="ghost-button" type="button">Close</button>
+        </div>
+
+        <div class="detail-layout">
+          <div class="detail-main">
+            <section>
+              <h4>Score breakdown</h4>
+              <div id="component-grid" class="component-grid"></div>
+            </section>
+
+            <section>
+              <h4>Why now</h4>
+              <ul id="reason-list" class="reason-list"></ul>
+            </section>
+
+            <section>
+              <div class="section-heading">
+                <h4>Evidence</h4>
+                <span id="evidence-count" class="muted"></span>
+              </div>
+              <div id="evidence-list" class="evidence-list"></div>
+            </section>
+          </div>
+
+          <aside class="detail-side">
+            <section>
+              <h4>Source confirmation</h4>
+              <div id="source-summary" class="source-summary"></div>
+            </section>
+
+            <section>
+              <h4>History</h4>
+              <div id="history-chart" class="history-chart"></div>
+            </section>
+
+            <section id="research-section" hidden>
+              <h4>Research Pack</h4>
+              <div id="research-pack" class="research-pack"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
