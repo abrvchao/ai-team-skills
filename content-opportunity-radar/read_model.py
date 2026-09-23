@@ -156,14 +156,29 @@ class RadarRunRecord:
 class OpportunityReadStore:
     """Append-only Radar product read model backed by SQLite."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        initialize: bool = True,
+        read_only: bool = False,
+    ) -> None:
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.path))
+        self.read_only = read_only
+        if read_only:
+            uri = f"file:{self.path.resolve()}?mode=ro"
+            self.conn = sqlite3.connect(uri, uri=True)
+            self.conn.execute("PRAGMA query_only=ON")
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.conn = sqlite3.connect(str(self.path))
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA foreign_keys=ON")
-        self._init_schema()
+        if initialize:
+            if read_only:
+                raise ValueError("read-only store cannot initialize schema")
+            self._init_schema()
 
     def close(self) -> None:
         self.conn.close()
