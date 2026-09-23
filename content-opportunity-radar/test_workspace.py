@@ -176,7 +176,9 @@ class WorkspaceTests(unittest.TestCase):
             blob = json.dumps(plan)
             self.assertIn("GSC_ACCESS_TOKEN", blob)
             self.assertIn("GOOGLE_ADS_ACCESS_TOKEN", blob)
-            self.assertNotIn("access_token\": \"", blob)
+            self.assertNotIn("do-not-store-me", blob)
+            for job_row in plan["jobs"]:
+                self.assertNotIn("access_token", job_row.get("metadata", {}))
             gsc = next(job for job in plan["jobs"] if job["provider"] == "gsc")
             self.assertEqual(
                 gsc["metadata_env"]["access_token"],
