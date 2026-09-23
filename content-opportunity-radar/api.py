@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -14,6 +15,7 @@ from read_model import OpportunityReadStore
 
 
 DEFAULT_DB = ".radar/radar.db"
+LOGGER = logging.getLogger("content_opportunity_radar.api")
 
 
 def _int_param(
@@ -63,7 +65,11 @@ def create_handler(database: str):
             )
 
         def _store(self) -> OpportunityReadStore:
-            return OpportunityReadStore(database)
+            return OpportunityReadStore(
+                database,
+                initialize=False,
+                read_only=True,
+            )
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
@@ -177,11 +183,12 @@ def create_handler(database: str):
                 self._error(404, "not_found", "endpoint not found")
             except ValueError as exc:
                 self._error(400, "bad_request", str(exc))
-            except Exception as exc:
+            except Exception:
+                LOGGER.exception("Radar API request failed")
                 self._error(
                     500,
                     "internal_error",
-                    f"{type(exc).__name__}: {exc}",
+                    "internal server error",
                 )
 
         def _read_only(self) -> None:
