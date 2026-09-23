@@ -335,6 +335,56 @@ python bootstrap.py serve
 Bootstrap never prints credential values. Optional tokens are reported by
 `doctor` as present/absent only.
 
+## Deployable Demo V1
+
+The Radar can run as two containers sharing one persistent data volume:
+
+```
+radar-web    → read-only API + Dashboard
+radar-worker → persistent collector loop
+```
+
+Start with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+```
+http://127.0.0.1:8787/
+```
+
+The shared SQLite database and generated public collection plan live in the
+named `radar-data` volume. The web container initializes/migrates schema
+locally before starting the read-only API. The worker initializes schema,
+creates a safe public-source plan when none exists, then runs the collector loop.
+
+Optional runtime environment:
+
+```bash
+RADAR_SCOPE="AI Agents" \
+GITHUB_TOKEN=... \
+GSC_ACCESS_TOKEN=... \
+GOOGLE_ADS_ACCESS_TOKEN=... \
+docker compose up --build
+```
+
+No credential values are baked into the image or Compose defaults. The image
+runs as a non-root `radar` user and includes a local `/v1/health` container
+healthcheck.
+
+Schema preparation can also be run directly without network access:
+
+```bash
+python bootstrap.py prepare --db .radar/radar.db
+```
+
+> Deployment V1 intentionally has no authentication or TLS termination. Do not
+> expose it directly to the public Internet without a trusted reverse proxy /
+> authentication layer.
+
 ## Workspace + Domain Onboarding V1
 
 Create a workspace for one primary site/customer context:
