@@ -83,6 +83,7 @@ def _sensitive_key(value: object) -> bool:
             "apikey",
             "password",
             "developer_token",
+            "token",
             "secret",
             "cookie",
             "private_key",
