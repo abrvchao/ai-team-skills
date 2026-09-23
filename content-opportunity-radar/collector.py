@@ -75,14 +75,46 @@ def _sensitive_key(value: object) -> bool:
         marker in normalized
         for marker in (
             "access_token",
+            "refresh_token",
+            "id_token",
             "authorization",
             "client_secret",
             "api_key",
             "apikey",
             "password",
             "developer_token",
+            "secret",
+            "cookie",
+            "private_key",
+            "credential",
         )
     )
+
+
+def _sensitive_metadata_paths(
+    value: Any,
+    *,
+    prefix: str = "metadata",
+) -> list[str]:
+    """Return every nested metadata path whose key looks credential-shaped."""
+    paths: list[str] = []
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            key_text = str(key)
+            path = f"{prefix}.{key_text}" if prefix else key_text
+            if _sensitive_key(key_text):
+                paths.append(path)
+                continue
+            paths.extend(_sensitive_metadata_paths(item, prefix=path))
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            paths.extend(
+                _sensitive_metadata_paths(
+                    item,
+                    prefix=f"{prefix}[{index}]",
+                )
+            )
+    return paths
 
 
 def _sanitize_for_storage(value: Any) -> Any:
@@ -161,10 +193,7 @@ class CollectionJob:
         if not 1 <= self.limit <= 5000:
             raise ValueError(f"job {self.id}: limit must be between 1 and 5000")
 
-        secret_literals = {
-            key for key in self.metadata
-            if key.casefold() in SECRET_METADATA_KEYS
-        }
+        secret_literals = _sensitive_metadata_paths(self.metadata)
         if secret_literals:
             names = ", ".join(sorted(secret_literals))
             raise ValueError(
