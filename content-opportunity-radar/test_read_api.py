@@ -251,6 +251,47 @@ class ReadModelTests(unittest.TestCase):
 
 
 class APITests(unittest.TestCase):
+    def test_static_dashboard_routes_are_whitelisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "radar.db"
+            with OpportunityReadStore(db):
+                pass
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(str(db)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                conn = http.client.HTTPConnection(
+                    "127.0.0.1",
+                    server.server_address[1],
+                    timeout=5,
+                )
+
+                conn.request("GET", "/")
+                response = conn.getresponse()
+                html = response.read().decode("utf-8")
+                self.assertEqual(response.status, 200)
+                self.assertIn("Content Opportunity Radar", html)
+                self.assertIn("default-src 'self'", response.getheader("Content-Security-Policy"))
+
+                conn.request("GET", "/app.js")
+                response = conn.getresponse()
+                js = response.read().decode("utf-8")
+                self.assertEqual(response.status, 200)
+                self.assertIn("javascript", response.getheader("Content-Type"))
+                self.assertIn("/v1/opportunities", js)
+
+                for unsafe in ("/read_model.py", "/../read_model.py", "/dashboard/../api.py"):
+                    conn.request("GET", unsafe)
+                    response = conn.getresponse()
+                    response.read()
+                    self.assertEqual(response.status, 404, unsafe)
+                conn.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
     def test_read_only_api_serves_opportunities_evidence_and_rejects_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "radar.db"
