@@ -134,6 +134,7 @@ def _decode_cursor(cursor: str | None) -> dict[str, Any] | None:
 @dataclass(slots=True)
 class RadarRunRecord:
     run_id: str
+    workspace_id: str | None
     scope: str
     generated_at: str
     seed_source_mode: str
@@ -145,6 +146,7 @@ class RadarRunRecord:
     def to_dict(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
+            "workspace_id": self.workspace_id,
             "scope": self.scope,
             "generated_at": self.generated_at,
             "seed_source_mode": self.seed_source_mode,
@@ -196,6 +198,7 @@ class OpportunityReadStore:
             """
             CREATE TABLE IF NOT EXISTS radar_runs (
                 run_id TEXT PRIMARY KEY,
+                workspace_id TEXT,
                 scope TEXT NOT NULL,
                 generated_at TEXT NOT NULL,
                 seed_source_mode TEXT NOT NULL,
@@ -208,9 +211,13 @@ class OpportunityReadStore:
             CREATE INDEX IF NOT EXISTS idx_radar_runs_scope_time
             ON radar_runs(scope, generated_at DESC, run_id DESC);
 
+            CREATE INDEX IF NOT EXISTS idx_radar_runs_workspace_scope_time
+            ON radar_runs(workspace_id, scope, generated_at DESC, run_id DESC);
+
             CREATE TABLE IF NOT EXISTS opportunity_snapshots (
                 snapshot_id TEXT PRIMARY KEY,
                 run_id TEXT NOT NULL,
+                workspace_id TEXT,
                 scope TEXT NOT NULL,
                 topic_id TEXT NOT NULL,
                 topic_name TEXT NOT NULL,
@@ -235,6 +242,9 @@ class OpportunityReadStore:
 
             CREATE INDEX IF NOT EXISTS idx_opportunity_scope_rank
             ON opportunity_snapshots(scope, run_id, rank, topic_id);
+
+            CREATE INDEX IF NOT EXISTS idx_opportunity_workspace_scope_rank
+            ON opportunity_snapshots(workspace_id, scope, run_id, rank, topic_id);
 
             CREATE INDEX IF NOT EXISTS idx_opportunity_topic_time
             ON opportunity_snapshots(topic_id, created_at DESC, snapshot_id DESC);
@@ -263,7 +273,33 @@ class OpportunityReadStore:
             ON radar_evidence(provider, last_seen_at DESC, evidence_id);
             """
         )
+        # Forward-compatible migration for databases created before workspace
+        # scoping existed. NULL/empty workspace rows remain the legacy namespace.
+        self._ensure_column("radar_runs", "workspace_id", "TEXT")
+        self._ensure_column("opportunity_snapshots", "workspace_id", "TEXT")
+        self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_radar_runs_workspace_scope_time
+            ON radar_runs(workspace_id, scope, generated_at DESC, run_id DESC)
+            """
+        )
+        self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_opportunity_workspace_scope_rank
+            ON opportunity_snapshots(workspace_id, scope, run_id, rank, topic_id)
+            """
+        )
         self.conn.commit()
+
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        columns = {
+            row["name"]
+            for row in self.conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            self.conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+            )
 
     def _table_exists(self, name: str) -> bool:
         row = self.conn.execute(
@@ -340,6 +376,7 @@ class OpportunityReadStore:
         """Persist one Radar run and its ranked Top Opportunities append-only."""
         now_dt = generated_at or utcnow()
         generated = isoformat(now_dt)
+        workspace_id = str(report.get("workspace_id") or "").strip() or None
         scope = str(report.get("scope") or "default")
         seed = dict(report.get("seed") or {})
         warnings = [safe_warning(item) for item in (seed.get("warnings") or [])]
@@ -350,6 +387,7 @@ class OpportunityReadStore:
         ]
         run_id = stable_id(
             "radar-run",
+            workspace_id or "",
             scope,
             generated,
             report.get("candidate_count"),
@@ -359,12 +397,13 @@ class OpportunityReadStore:
         self.conn.execute(
             """
             INSERT INTO radar_runs (
-                run_id, scope, generated_at, seed_source_mode,
+                run_id, workspace_id, scope, generated_at, seed_source_mode,
                 candidate_count, scanned_count, warning_json, error_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
+                workspace_id,
                 scope,
                 generated,
                 str(seed.get("source_mode") or "unknown"),
@@ -390,16 +429,17 @@ class OpportunityReadStore:
             self.conn.execute(
                 """
                 INSERT INTO opportunity_snapshots (
-                    snapshot_id, run_id, scope, topic_id, topic_name, rank,
+                    snapshot_id, run_id, workspace_id, scope, topic_id, topic_name, rank,
                     discovery_score, opportunity_score, rank_score,
                     confidence, freshness, components_json, reasons_json,
                     features_json, discovery_json, evidence_ids_json,
                     research_pack_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     snapshot_id,
                     run_id,
+                    workspace_id,
                     scope,
                     str(row.get("topic_id") or ""),
                     str(row.get("topic") or ""),
@@ -427,21 +467,33 @@ class OpportunityReadStore:
         self.conn.commit()
         return run_id
 
-    def latest_run(self, scope: str) -> RadarRunRecord | None:
+    def latest_run(
+        self,
+        scope: str,
+        *,
+        workspace_id: str | None = None,
+    ) -> RadarRunRecord | None:
+        if workspace_id is None:
+            where = "scope = ? AND COALESCE(workspace_id, '') = ''"
+            params = (scope,)
+        else:
+            where = "scope = ? AND workspace_id = ?"
+            params = (scope, workspace_id)
         row = self.conn.execute(
-            """
+            f"""
             SELECT *
             FROM radar_runs
-            WHERE scope = ?
+            WHERE {where}
             ORDER BY generated_at DESC, run_id DESC
             LIMIT 1
             """,
-            (scope,),
+            params,
         ).fetchone()
         if not row:
             return None
         return RadarRunRecord(
             run_id=row["run_id"],
+            workspace_id=row["workspace_id"] or None,
             scope=row["scope"],
             generated_at=row["generated_at"],
             seed_source_mode=row["seed_source_mode"],
@@ -481,6 +533,7 @@ class OpportunityReadStore:
         evidence_ids = list(_loads(row["evidence_ids_json"], []))
         return {
             "run_id": row["run_id"],
+            "workspace_id": row["workspace_id"] or None,
             "scope": row["scope"],
             "topic_id": row["topic_id"],
             "topic": row["topic_name"],
@@ -508,8 +561,9 @@ class OpportunityReadStore:
         scope: str,
         limit: int = 20,
         cursor: str | None = None,
+        workspace_id: str | None = None,
     ) -> dict[str, Any]:
-        run = self.latest_run(scope)
+        run = self.latest_run(scope, workspace_id=workspace_id)
         if not run:
             return {"run": None, "items": [], "next_cursor": None}
 
@@ -558,12 +612,18 @@ class OpportunityReadStore:
         topic_id: str,
         *,
         scope: str | None = None,
+        workspace_id: str | None = None,
     ) -> dict[str, Any] | None:
         params: list[Any] = [topic_id]
         where = ["topic_id = ?"]
         if scope is not None:
             where.append("scope = ?")
             params.append(scope)
+        if workspace_id is None:
+            where.append("COALESCE(workspace_id, '') = ''")
+        else:
+            where.append("workspace_id = ?")
+            params.append(workspace_id)
         row = self.conn.execute(
             f"""
             SELECT *
@@ -581,6 +641,7 @@ class OpportunityReadStore:
         topic_id: str,
         *,
         scope: str | None = None,
+        workspace_id: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         params: list[Any] = [topic_id]
@@ -588,10 +649,15 @@ class OpportunityReadStore:
         if scope is not None:
             where.append("scope = ?")
             params.append(scope)
+        if workspace_id is None:
+            where.append("COALESCE(workspace_id, '') = ''")
+        else:
+            where.append("workspace_id = ?")
+            params.append(workspace_id)
         params.append(max(1, min(int(limit), 365)))
         rows = self.conn.execute(
             f"""
-            SELECT run_id, scope, topic_id, topic_name, rank,
+            SELECT run_id, workspace_id, scope, topic_id, topic_name, rank,
                    discovery_score, opportunity_score, rank_score,
                    confidence, freshness, created_at
             FROM opportunity_snapshots
@@ -604,6 +670,7 @@ class OpportunityReadStore:
         return [
             {
                 "run_id": row["run_id"],
+                "workspace_id": row["workspace_id"] or None,
                 "scope": row["scope"],
                 "topic_id": row["topic_id"],
                 "topic": row["topic_name"],
@@ -652,12 +719,18 @@ class OpportunityReadStore:
         topic_id: str,
         *,
         scope: str | None = None,
+        workspace_id: str | None = None,
     ) -> dict[str, Any] | None:
         params: list[Any] = [topic_id]
         where = ["topic_id = ?", "research_pack_json IS NOT NULL"]
         if scope is not None:
             where.append("scope = ?")
             params.append(scope)
+        if workspace_id is None:
+            where.append("COALESCE(workspace_id, '') = ''")
+        else:
+            where.append("workspace_id = ?")
+            params.append(workspace_id)
         row = self.conn.execute(
             f"""
             SELECT research_pack_json
