@@ -37,6 +37,7 @@ from pipeline import (
     dedupe_news,
     run_pipeline,
 )
+from read_model import OpportunityReadStore
 from research_pack import build_research_pack
 from web import WebsiteProvider
 
@@ -287,6 +288,7 @@ def run_discovery(
     seed_providers: Sequence[DataProvider] | None = None,
     collector_db: str | None = None,
     collector_since_hours: int = 72,
+    read_model_db: str | None = None,
     include_research_pack: bool = False,
 ) -> dict[str, Any]:
     seed = collect_seed_events(
@@ -350,7 +352,7 @@ def run_discovery(
         ]
     persist_radar_rankings(top, snapshot_path=snapshot_path)
 
-    return {
+    output = {
         "mode": "discovery",
         "scope": scope,
         "seed": seed.to_dict(),
@@ -360,6 +362,14 @@ def run_discovery(
         "scan_errors": scan_errors,
         "top_opportunities": top,
     }
+    if read_model_db:
+        with OpportunityReadStore(read_model_db) as store:
+            run_id = store.record_discovery(output)
+        output["read_model"] = {
+            "database": read_model_db,
+            "run_id": run_id,
+        }
+    return output
 
 
 def main() -> int:
@@ -396,6 +406,10 @@ def main() -> int:
         help="Maximum age of stored seed events",
     )
     parser.add_argument(
+        "--read-model-db",
+        help="Persist Radar runs/opportunities for the read-only API",
+    )
+    parser.add_argument(
         "--research-pack",
         action="store_true",
         help="Attach a provenance-first Research Pack to each Top Opportunity",
@@ -424,6 +438,7 @@ def main() -> int:
         content_snapshot_path=args.content_snapshot_path,
         collector_db=args.collector_db,
         collector_since_hours=args.collector_since_hours,
+        read_model_db=args.read_model_db,
         include_research_pack=args.research_pack,
     )
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2))
