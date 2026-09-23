@@ -56,11 +56,13 @@ def _sanitize_public(value: Any) -> Any:
         }
     if isinstance(value, (list, tuple)):
         return [_sanitize_public(item) for item in value]
+    if isinstance(value, str):
+        return safe_warning(value)
     return value
 
 
 _WARNING_SECRET_RE = re.compile(
-    r"(?i)\b(authorization|access[_-]?token|refresh[_-]?token|id[_-]?token|"
+    r"(?i)\b(authorization|access[_-]?token|refresh[_-]?token|id[_-]?token|token|"
     r"api[_-]?key|cookie|secret|password|private[_-]?key|credential)\b"
     r"(\s*[:=]\s*)([^\s,;]+)"
 )
@@ -757,7 +759,6 @@ class OpportunityReadStore:
         ).fetchone()[0]
         return {
             "status": "ok",
-            "database": str(self.path),
             "radar_runs": int(runs),
             "opportunity_snapshots": int(snapshots),
             "evidence_records": int(evidence),
