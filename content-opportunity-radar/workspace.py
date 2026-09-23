@@ -7,6 +7,7 @@ use environment-variable references in generated collection plans.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import re
@@ -27,18 +28,67 @@ MAX_COMPETITORS = 20
 
 
 def normalize_site_url(value: str | None, *, required: bool = False) -> str | None:
+    """Normalize a public website origin for onboarding.
+
+    This is a configuration safety boundary, not a network SSRF scanner.
+    It rejects obviously local/private address literals and credential-bearing
+    URLs before they can become persistent website-collector targets.
+    """
     raw = str(value or "").strip()
     if not raw:
         if required:
             raise ValueError("site URL is required")
         return None
+
     parsed = urlparse(raw)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    scheme = parsed.scheme.casefold()
+    if scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("site URL must be absolute http/https")
-    host = parsed.hostname.casefold()
-    if parsed.port:
-        host = f"{host}:{parsed.port}"
-    return f"{parsed.scheme.casefold()}://{host}"
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("site URL must not contain embedded credentials")
+
+    host = parsed.hostname.rstrip(".").casefold()
+    if not host:
+        raise ValueError("site URL hostname is required")
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        raise ValueError("local hostnames are not allowed")
+
+    try:
+        ascii_host = host.encode("idna").decode("ascii").casefold()
+    except UnicodeError as exc:
+        raise ValueError("invalid internationalized hostname") from exc
+
+    try:
+        address = ipaddress.ip_address(ascii_host)
+    except ValueError:
+        address = None
+
+    if address is not None:
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+        ):
+            raise ValueError("private/local address literals are not allowed")
+        display_host = f"[{ascii_host}]" if address.version == 6 else ascii_host
+    else:
+        if "." not in ascii_host:
+            raise ValueError("site URL must use a public domain name")
+        display_host = ascii_host
+
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid site URL port") from exc
+
+    default_port = 80 if scheme == "http" else 443
+    if port and port != default_port:
+        display_host = f"{display_host}:{port}"
+
+    return f"{scheme}://{display_host}"
 
 
 def normalize_gsc_site(value: str | None) -> str | None:
