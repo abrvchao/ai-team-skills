@@ -24,5 +24,7 @@ jobs:
           python-version: "3.12"
       - name: Compile
         run: python -m compileall -q .
+      - name: Dashboard JS syntax
+        run: node --check dashboard/app.js
       - name: Unit tests
         run: python -m unittest discover -v -p "test_*.py"

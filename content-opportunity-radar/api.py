@@ -9,12 +9,19 @@ import argparse
 import json
 import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from read_model import OpportunityReadStore
 
 
 DEFAULT_DB = ".radar/radar.db"
+DASHBOARD_DIR = Path(__file__).with_name("dashboard")
+STATIC_ROUTES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+}
 LOGGER = logging.getLogger("content_opportunity_radar.api")
 
 
@@ -64,6 +71,34 @@ def create_handler(database: str):
                 },
             )
 
+        def _static(self, route: str) -> bool:
+            target = STATIC_ROUTES.get(route)
+            if target is None:
+                return False
+            filename, content_type = target
+            path = DASHBOARD_DIR / filename
+            try:
+                body = path.read_bytes()
+            except OSError:
+                self._error(404, "not_found", "dashboard asset not found")
+                return True
+
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self'; "
+                "connect-src 'self'; img-src 'self' data:; object-src 'none'; "
+                "base-uri 'none'; frame-ancestors 'none'",
+            )
+            self.end_headers()
+            self.wfile.write(body)
+            return True
+
         def _store(self) -> OpportunityReadStore:
             return OpportunityReadStore(
                 database,
@@ -77,6 +112,9 @@ def create_handler(database: str):
             query = parse_qs(parsed.query, keep_blank_values=False)
 
             try:
+                if self._static(path):
+                    return
+
                 if path == "/v1/health":
                     with self._store() as store:
                         self._json(200, store.health())
