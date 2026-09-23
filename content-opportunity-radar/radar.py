@@ -68,6 +68,7 @@ def collect_seed_events(
     providers: Sequence[DataProvider] | None = None,
     collector_db: str | None = None,
     collector_since_hours: int = 72,
+    collector_job_prefix: str | None = None,
     language: str = "en",
     country: str = "US",
 ) -> DiscoverySeed:
@@ -95,6 +96,7 @@ def collect_seed_events(
                 stored_events = store.recent_events(
                     since=since,
                     providers=seed_providers,
+                    job_prefix=collector_job_prefix,
                     limit=max(500, min(50000, limit * 200)),
                 )
         except Exception as exc:
@@ -303,6 +305,7 @@ def run_discovery(
     seed_providers: Sequence[DataProvider] | None = None,
     collector_db: str | None = None,
     collector_since_hours: int = 72,
+    collector_job_prefix: str | None = None,
     read_model_db: str | None = None,
     workspace_id: str | None = None,
     language: str = "en",
@@ -318,6 +321,7 @@ def run_discovery(
         providers=seed_providers,
         collector_db=collector_db,
         collector_since_hours=collector_since_hours,
+        collector_job_prefix=collector_job_prefix,
         language=language,
         country=country,
     )
