@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abrvchao.github.io/ai-team-orchestrator/status.schema.json",
+  "title": "AI Team Task Status",
+  "type": "string",
+  "enum": [
+    "queued",
+    "acknowledged",
+    "running",
+    "blocked",
+    "completed",
+    "failed",
+    "cancelled"
+  ]
+}
