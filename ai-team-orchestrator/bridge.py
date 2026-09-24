@@ -23,6 +23,7 @@ from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
 from adapters import AgentAdapter
+from dispatcher import Dispatcher
 from protocol import Artifact, TaskRecord, TaskRequest, TaskStatus, TERMINAL_STATUSES
 from registry import AgentRegistry
 from store import TaskStore
@@ -410,20 +411,6 @@ class DSHAdapter(AgentAdapter):
                 self._completion_signals.discard(task_id)
 
 
-class Dispatcher:
-    def __init__(self, dsh: DSHAdapter, registry: AgentRegistry) -> None:
-        self.dsh = dsh
-        self.registry = registry
-
-    def adapter(self, agent_id: str) -> AgentAdapter:
-        descriptor = self.registry.get(agent_id)
-        if agent_id == "dsh" and descriptor.available:
-            return self.dsh
-        raise RuntimeError(
-            f"agent {agent_id} is not available: {descriptor.note or descriptor.transport}"
-        )
-
-
 def _json_body(handler: BaseHTTPRequestHandler, *, max_bytes: int = 1024 * 1024) -> dict[str, Any]:
     try:
         length = int(handler.headers.get("Content-Length") or "0")
@@ -579,7 +566,10 @@ def serve(config: BridgeConfig) -> None:
     store = TaskStore(config.database)
     dsh = DSHAdapter(config, store)
     registry = AgentRegistry.default(dsh_configured=config.configured)
-    dispatcher = Dispatcher(dsh, registry)
+    dispatcher = Dispatcher(
+        registry=registry,
+        adapters={"dsh": dsh},
+    )
     server = ThreadingHTTPServer(
         (config.host, config.port),
         create_handler(dispatcher=dispatcher, store=store, registry=registry),
