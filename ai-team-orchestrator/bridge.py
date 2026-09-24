@@ -14,7 +14,6 @@ import argparse
 import json
 import os
 import shlex
-import signal
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -105,6 +104,7 @@ class DSHAdapter(AgentAdapter):
         self.config = config
         self.store = store
         self._processes: dict[str, subprocess.Popen[str]] = {}
+        self._completion_signals: set[str] = set()
         self._lock = threading.RLock()
 
     def submit(self, request: TaskRequest) -> str:
@@ -262,7 +262,9 @@ class DSHAdapter(AgentAdapter):
                 self.store.transition(task_id, TaskStatus.BLOCKED)
                 return
             if status == TaskStatus.COMPLETED and current.status == TaskStatus.RUNNING:
-                self.store.transition(task_id, TaskStatus.COMPLETED)
+                # Completion is provisional until the worker exits successfully.
+                with self._lock:
+                    self._completion_signals.add(task_id)
                 return
             if status == TaskStatus.FAILED and current.status not in TERMINAL_STATUSES:
                 if current.status == TaskStatus.QUEUED:
@@ -366,12 +368,6 @@ class DSHAdapter(AgentAdapter):
 
             if current.status == TaskStatus.CANCELLED:
                 return
-            if current.status == TaskStatus.COMPLETED:
-                if exit_code != 0:
-                    # Worker cannot claim completion and then exit non-zero.
-                    # Keep completion truth conservative.
-                    return
-                return
             if current.status == TaskStatus.QUEUED:
                 self.store.transition(
                     task_id,
@@ -380,6 +376,20 @@ class DSHAdapter(AgentAdapter):
                     error="worker exited without ACK; task never started",
                 )
                 return
+            if current.status == TaskStatus.FAILED:
+                return
+
+            with self._lock:
+                completion_signaled = task_id in self._completion_signals
+
+            if exit_code == 0 and completion_signaled and current.status == TaskStatus.RUNNING:
+                self.store.transition(
+                    task_id,
+                    TaskStatus.COMPLETED,
+                    exit_code=exit_code,
+                )
+                return
+
             if exit_code == 0:
                 self.store.transition(
                     task_id,
@@ -397,6 +407,7 @@ class DSHAdapter(AgentAdapter):
         finally:
             with self._lock:
                 self._processes.pop(task_id, None)
+                self._completion_signals.discard(task_id)
 
 
 class Dispatcher:
