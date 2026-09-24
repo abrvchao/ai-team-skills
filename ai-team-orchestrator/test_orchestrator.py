@@ -10,7 +10,8 @@ import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from bridge import BridgeConfig, DSHAdapter, Dispatcher, create_handler
+from bridge import BridgeConfig, DSHAdapter, create_handler
+from dispatcher import Dispatcher
 from protocol import TaskRequest, TaskStatus
 from registry import AgentRegistry
 from store import TaskStore
@@ -188,7 +189,10 @@ class OrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _, _, store, adapter = self.make_adapter(tmp)
             registry = AgentRegistry.default(dsh_configured=True)
-            dispatcher = Dispatcher(adapter, registry)
+            dispatcher = Dispatcher(
+                registry=registry,
+                adapters={"dsh": adapter},
+            )
             server = ThreadingHTTPServer(
                 ("127.0.0.1", 0),
                 create_handler(
