@@ -22,7 +22,7 @@ class Dispatcher:
     def adapter(self, agent_id: str) -> AgentAdapter:
         descriptor = self.registry.get(agent_id)
         adapter = self.adapters.get(agent_id)
-        if descriptor.available and adapter is not None:
+        if descriptor.configured and adapter is not None:
             return adapter
         raise RuntimeError(
             f"agent {agent_id} is not available: "
