@@ -205,6 +205,8 @@ class OrchestratorTests(unittest.TestCase):
                     dispatcher=dispatcher,
                     store=store,
                     registry=registry,
+                    dsh=adapter,
+                    config=adapter.config,
                 ),
             )
             thread = threading.Thread(target=server.serve_forever, daemon=True)
