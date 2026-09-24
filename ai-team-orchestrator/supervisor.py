@@ -73,6 +73,9 @@ class BridgeClient:
     def agents(self) -> list[dict[str, Any]]:
         return list(self._request("GET", "/agents").get("items") or [])
 
+    def tasks(self) -> list[dict[str, Any]]:
+        return list(self._request("GET", "/tasks").get("items") or [])
+
     def submit(
         self,
         *,
