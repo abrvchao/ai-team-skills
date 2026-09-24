@@ -65,6 +65,8 @@ def main() -> int:
         return 2
 
     emit({"type": "status", "status": "completed"})
+    if mode == "complete_nonzero":
+        return 3
     return 0
 
 
