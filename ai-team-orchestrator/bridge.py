@@ -490,9 +490,36 @@ def create_handler(
     dispatcher: Dispatcher,
     store: TaskStore,
     registry: AgentRegistry,
+    dsh: DSHAdapter,
+    config: BridgeConfig,
 ):
+    def sync_registry() -> None:
+        dsh_agent = registry.get("dsh")
+        workers = store.list_workers(
+            agent_id="dsh",
+            ttl_seconds=config.worker_ttl_seconds,
+        )
+        pull_online = any(worker["online"] for worker in workers)
+        dsh_agent.configured = config.queueable
+        dsh_agent.queueable = config.queueable
+        dsh_agent.available = config.configured or pull_online
+        if config.configured and pull_online:
+            dsh_agent.transport = "local_push+registered_pull"
+        elif config.configured:
+            dsh_agent.transport = "local_push"
+        elif config.allow_pull_workers:
+            dsh_agent.transport = "registered_pull"
+        else:
+            dsh_agent.transport = "not_configured"
+        if dsh_agent.available:
+            dsh_agent.note = ""
+        elif dsh_agent.configured:
+            dsh_agent.note = "DSH is queueable; no active worker is online"
+        else:
+            dsh_agent.note = "DSH transport is not configured"
+
     class Handler(BaseHTTPRequestHandler):
-        server_version = "AITeamAgentBridge/0.1"
+        server_version = "AITeamAgentBridge/0.3"
 
         def log_message(self, format: str, *args: object) -> None:
             return
@@ -510,28 +537,167 @@ def create_handler(
         def _error(self, status: int, code: str, message: str) -> None:
             self._json(status, {"error": {"code": code, "message": message}})
 
+        def _worker(self) -> dict[str, Any]:
+            authorization = str(self.headers.get("Authorization") or "")
+            if not authorization.startswith("Bearer "):
+                raise PermissionError("worker bearer token is required")
+            token = authorization[len("Bearer "):].strip()
+            if not token:
+                raise PermissionError("worker bearer token is required")
+            return store.authenticate_worker(
+                token,
+                ttl_seconds=config.worker_ttl_seconds,
+            )
+
+        def _owned_task(self, task_id: str) -> tuple[dict[str, Any], TaskRecord]:
+            worker = self._worker()
+            task = store.get_task(task_id)
+            if task.worker_id != worker["worker_id"]:
+                raise PermissionError("task is not leased to this worker")
+            return worker, task
+
+        def _handle_worker_event(
+            self,
+            *,
+            worker: dict[str, Any],
+            task: TaskRecord,
+            event: Mapping[str, Any],
+        ) -> TaskRecord:
+            event_type = str(event.get("type") or "").strip().casefold()
+            current = store.get_task(task.task_id)
+            if current.worker_id != worker["worker_id"]:
+                raise PermissionError("task is not leased to this worker")
+
+            if event_type == "ack":
+                # Lease already established ACK; explicit ACK is idempotent.
+                if current.status == TaskStatus.QUEUED:
+                    return store.transition(current.task_id, TaskStatus.ACKNOWLEDGED)
+                return current
+
+            if event_type == "status":
+                raw = str(event.get("status") or "").strip().casefold()
+                try:
+                    status = TaskStatus(raw)
+                except ValueError as exc:
+                    raise ValueError("unsupported worker task status") from exc
+
+                if status == TaskStatus.RUNNING:
+                    if current.status in {TaskStatus.ACKNOWLEDGED, TaskStatus.BLOCKED}:
+                        return store.transition(current.task_id, TaskStatus.RUNNING)
+                    if current.status == TaskStatus.RUNNING:
+                        return current
+                    raise ValueError(f"cannot mark {current.status.value} task running")
+
+                if status == TaskStatus.BLOCKED:
+                    if current.status in {TaskStatus.ACKNOWLEDGED, TaskStatus.RUNNING}:
+                        return store.transition(current.task_id, TaskStatus.BLOCKED)
+                    if current.status == TaskStatus.BLOCKED:
+                        return current
+                    raise ValueError(f"cannot block {current.status.value} task")
+
+                if status == TaskStatus.COMPLETED:
+                    if current.status == TaskStatus.COMPLETED:
+                        return current
+                    if current.status != TaskStatus.RUNNING:
+                        raise ValueError("task must be running before completion")
+                    return store.transition(current.task_id, TaskStatus.COMPLETED)
+
+                if status == TaskStatus.FAILED:
+                    if current.status == TaskStatus.FAILED:
+                        return current
+                    if current.status not in {
+                        TaskStatus.ACKNOWLEDGED,
+                        TaskStatus.RUNNING,
+                        TaskStatus.BLOCKED,
+                    }:
+                        raise ValueError(f"cannot fail {current.status.value} task")
+                    return store.transition(
+                        current.task_id,
+                        TaskStatus.FAILED,
+                        error=str(event.get("error") or "worker reported failure"),
+                    )
+
+                raise ValueError("worker may not set this task status directly")
+
+            if event_type == "artifact":
+                if current.status not in {
+                    TaskStatus.ACKNOWLEDGED,
+                    TaskStatus.RUNNING,
+                    TaskStatus.BLOCKED,
+                    TaskStatus.COMPLETED,
+                }:
+                    raise ValueError("task cannot accept artifacts in current state")
+                raw_path = str(event.get("path") or "").strip()
+                if not raw_path:
+                    raise ValueError("artifact path is required")
+                metadata = dict(event.get("metadata") or {})
+                if _contains_sensitive_metadata(metadata):
+                    raise ValueError("artifact metadata contains credential-shaped fields")
+                reference = dsh._artifact_reference(current, raw_path)
+                store.add_artifact(
+                    current.task_id,
+                    kind=str(event.get("kind") or "file"),
+                    path=reference,
+                    label=str(event.get("label") or ""),
+                    metadata=metadata,
+                )
+                return store.get_task(current.task_id)
+
+            raise ValueError("unsupported worker event type")
+
         def do_GET(self) -> None:
             path = urlparse(self.path).path.rstrip("/") or "/"
             try:
                 if path == "/health":
+                    sync_registry()
                     self._json(
                         200,
                         {
                             "status": "ok",
                             "dsh_configured": registry.get("dsh").configured,
+                            "dsh_available": registry.get("dsh").available,
+                            "pull_workers_enabled": config.allow_pull_workers,
+                            "online_workers": sum(
+                                1
+                                for worker in store.list_workers(
+                                    ttl_seconds=config.worker_ttl_seconds
+                                )
+                                if worker["online"]
+                            ),
                             "tasks": len(store.list_tasks(limit=500)),
                         },
                     )
                     return
+
                 if path == "/agents":
-                    self._json(200, {"items": [agent.to_dict() for agent in registry.list()]})
+                    sync_registry()
+                    self._json(
+                        200,
+                        {"items": [agent.to_dict() for agent in registry.list()]},
+                    )
                     return
+
                 if path == "/tasks":
                     self._json(
                         200,
                         {"items": [task.to_dict() for task in store.list_tasks()]},
                     )
                     return
+
+                if path.startswith("/workers/"):
+                    worker_id = unquote(path[len("/workers/"):]).split("/")[0]
+                    worker = self._worker()
+                    if worker["worker_id"] != worker_id:
+                        raise PermissionError("worker token does not match worker id")
+                    self._json(
+                        200,
+                        store.get_worker(
+                            worker_id,
+                            ttl_seconds=config.worker_ttl_seconds,
+                        ),
+                    )
+                    return
+
                 if path.startswith("/tasks/"):
                     suffix = path[len("/tasks/"):]
                     parts = suffix.split("/")
@@ -548,15 +714,86 @@ def create_handler(
                             {"items": [item.to_dict() for item in store.artifacts(task_id)]},
                         )
                         return
+                    if len(parts) == 2 and parts[1] == "messages":
+                        _, owned = self._owned_task(task_id)
+                        self._json(
+                            200,
+                            {
+                                "task_id": owned.task_id,
+                                "messages": store.messages(task_id),
+                            },
+                        )
+                        return
+
                 self._error(404, "not_found", "endpoint not found")
+            except PermissionError as exc:
+                self._error(403, "forbidden", str(exc))
             except KeyError:
-                self._error(404, "not_found", "task/agent not found")
-            except Exception as exc:
+                self._error(404, "not_found", "task/agent/worker not found")
+            except ValueError as exc:
                 self._error(400, "bad_request", str(exc))
+            except Exception:
+                self._error(500, "internal_error", "internal server error")
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path.rstrip("/") or "/"
             try:
+                if path == "/workers/register":
+                    if not config.allow_pull_workers:
+                        raise RuntimeError("registered pull workers are disabled")
+                    body = _json_body(self)
+                    agent_id = str(body.get("agent_id") or "").strip()
+                    descriptor = registry.get(agent_id)
+                    if not descriptor.configured:
+                        raise RuntimeError(f"agent {agent_id} is not configured")
+                    capabilities_raw = body.get("capabilities") or []
+                    if not isinstance(capabilities_raw, list):
+                        raise ValueError("capabilities must be an array")
+                    capabilities = [
+                        str(item)[:80]
+                        for item in capabilities_raw[:32]
+                        if str(item).strip()
+                    ]
+                    worker = store.register_worker(
+                        agent_id=agent_id,
+                        label=str(body.get("label") or "")[:160],
+                        capabilities=capabilities,
+                    )
+                    sync_registry()
+                    worker["heartbeat_ttl_seconds"] = config.worker_ttl_seconds
+                    self._json(201, worker)
+                    return
+
+                if path.startswith("/workers/"):
+                    suffix = path[len("/workers/"):]
+                    parts = suffix.split("/")
+                    worker_id = unquote(parts[0])
+                    worker = self._worker()
+                    if worker["worker_id"] != worker_id:
+                        raise PermissionError("worker token does not match worker id")
+
+                    if len(parts) == 2 and parts[1] == "heartbeat":
+                        current = store.heartbeat_worker(worker_id)
+                        sync_registry()
+                        current["heartbeat_ttl_seconds"] = config.worker_ttl_seconds
+                        self._json(200, current)
+                        return
+
+                    if len(parts) == 2 and parts[1] == "lease":
+                        store.heartbeat_worker(worker_id)
+                        task = store.lease_task(
+                            worker_id=worker_id,
+                            agent_id=worker["agent_id"],
+                        )
+                        sync_registry()
+                        if task is None:
+                            self._json(200, {"task": None})
+                            return
+                        payload = task.to_dict(include_prompt=True)
+                        payload["messages"] = store.messages(task.task_id)
+                        self._json(200, {"task": payload})
+                        return
+
                 if path == "/tasks":
                     body = _json_body(self)
                     agent_id = str(body.get("agent_id") or "").strip()
@@ -569,6 +806,7 @@ def create_handler(
                     )
                     adapter = dispatcher.adapter(agent_id)
                     task_id = adapter.submit(request)
+                    sync_registry()
                     self._json(202, store.get_task(task_id).to_dict())
                     return
 
@@ -577,8 +815,21 @@ def create_handler(
                     parts = suffix.split("/")
                     task_id = unquote(parts[0])
                     task = store.get_task(task_id)
-                    adapter = dispatcher.adapter(task.agent_id)
 
+                    if len(parts) == 2 and parts[1] == "events":
+                        worker, owned = self._owned_task(task_id)
+                        body = _json_body(self)
+                        updated = self._handle_worker_event(
+                            worker=worker,
+                            task=owned,
+                            event=body,
+                        )
+                        store.heartbeat_worker(worker["worker_id"])
+                        sync_registry()
+                        self._json(200, updated.to_dict())
+                        return
+
+                    adapter = dispatcher.adapter(task.agent_id)
                     if len(parts) == 2 and parts[1] == "messages":
                         body = _json_body(self)
                         adapter.message(task_id, str(body.get("message") or ""))
@@ -590,8 +841,10 @@ def create_handler(
                         return
 
                 self._error(404, "not_found", "endpoint not found")
+            except PermissionError as exc:
+                self._error(403, "forbidden", str(exc))
             except KeyError:
-                self._error(404, "not_found", "task/agent not found")
+                self._error(404, "not_found", "task/agent/worker not found")
             except RuntimeError as exc:
                 self._error(503, "unavailable", str(exc))
             except ValueError as exc:
@@ -600,7 +853,6 @@ def create_handler(
                 self._error(500, "internal_error", "internal server error")
 
     return Handler
-
 
 def load_command(value: str | None) -> list[str]:
     raw = str(value or "").strip()
