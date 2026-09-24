@@ -184,6 +184,12 @@ class TaskStore:
             workspace=row["workspace"],
             status=TaskStatus(row["status"]),
             created_at=_dt(row["created_at"]) or utcnow(),
+            worker_id=row["worker_id"] if "worker_id" in row.keys() else None,
+            leased_at=(
+                _dt(row["leased_at"])
+                if "leased_at" in row.keys()
+                else None
+            ),
             acknowledged_at=_dt(row["acknowledged_at"]),
             started_at=_dt(row["started_at"]),
             finished_at=_dt(row["finished_at"]),
