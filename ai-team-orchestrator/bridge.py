@@ -92,10 +92,17 @@ class BridgeConfig:
     command: list[str]
     host: str = "127.0.0.1"
     port: int = 8765
+    allow_pull_workers: bool = True
+    worker_ttl_seconds: int = 90
 
     @property
     def configured(self) -> bool:
+        """Whether push-local execution is configured."""
         return bool(self.command)
+
+    @property
+    def queueable(self) -> bool:
+        return self.configured or self.allow_pull_workers
 
 
 class DSHAdapter(AgentAdapter):
@@ -112,8 +119,8 @@ class DSHAdapter(AgentAdapter):
     def submit(self, request: TaskRequest) -> str:
         if request.agent_id != self.agent_id:
             raise ValueError(f"DSH adapter cannot submit agent {request.agent_id}")
-        if not self.config.configured:
-            raise RuntimeError("DSH command is not configured")
+        if not self.config.queueable:
+            raise RuntimeError("DSH has no configured execution transport")
         if _contains_sensitive_metadata(request.metadata):
             raise ValueError("task metadata must not contain credential-shaped fields")
 
@@ -153,15 +160,21 @@ class DSHAdapter(AgentAdapter):
                 "message_file": str(task_dir / "messages.jsonl"),
             },
         )
-        thread = threading.Thread(
-            target=self._run_task,
-            args=(record.task_id,),
-            name=f"dsh-{record.task_id}",
-            daemon=True,
-        )
-        with self._lock:
-            self._threads[record.task_id] = thread
-        thread.start()
+        if self.config.configured:
+            # Reserve push-local tasks so registered pull workers cannot race
+            # the local subprocess before it emits its first ACK.
+            self.store.reserve_task(record.task_id, "push-local:dsh")
+            thread = threading.Thread(
+                target=self._run_task,
+                args=(record.task_id,),
+                name=f"dsh-{record.task_id}",
+                daemon=True,
+            )
+            with self._lock:
+                self._threads[record.task_id] = thread
+            thread.start()
+        # In pull-only mode the task deliberately remains queued/not-started
+        # until a registered worker leases it.
         return record.task_id
 
     def status(self, task_id: str) -> TaskRecord:
@@ -607,14 +620,24 @@ def serve(config: BridgeConfig) -> None:
     config.workspace_root.mkdir(parents=True, exist_ok=True)
     store = TaskStore(config.database)
     dsh = DSHAdapter(config, store)
-    registry = AgentRegistry.default(dsh_configured=config.configured)
+    registry = AgentRegistry.default(
+        dsh_configured=config.queueable,
+        dsh_available=config.configured,
+        dsh_queueable=config.queueable,
+    )
     dispatcher = Dispatcher(
         registry=registry,
         adapters={"dsh": dsh},
     )
     server = ThreadingHTTPServer(
         (config.host, config.port),
-        create_handler(dispatcher=dispatcher, store=store, registry=registry),
+        create_handler(
+            dispatcher=dispatcher,
+            store=store,
+            registry=registry,
+            dsh=dsh,
+            config=config,
+        ),
     )
     print(
         json.dumps(
@@ -622,7 +645,8 @@ def serve(config: BridgeConfig) -> None:
                 "status": "listening",
                 "host": config.host,
                 "port": config.port,
-                "dsh_configured": config.configured,
+                "dsh_push_configured": config.configured,
+                "pull_workers_enabled": config.allow_pull_workers,
                 "workspace_root": str(config.workspace_root),
             },
             ensure_ascii=False,
@@ -647,6 +671,16 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument(
+        "--no-pull-workers",
+        action="store_true",
+        help="Disable registered pull-worker queueing",
+    )
+    parser.add_argument(
+        "--worker-ttl-seconds",
+        type=int,
+        default=90,
+    )
+    parser.add_argument(
         "--dsh-command",
         default=os.getenv("DSH_COMMAND_JSON") or os.getenv("DSH_COMMAND") or "",
         help="Configured DSH argv (JSON array preferred); supports {request_file}, {task_dir}, {workspace}, {task_id}",
@@ -660,6 +694,8 @@ def main() -> int:
         command=load_command(args.dsh_command),
         host=args.host,
         port=max(1, min(int(args.port), 65535)),
+        allow_pull_workers=not args.no_pull_workers,
+        worker_ttl_seconds=max(10, min(int(args.worker_ttl_seconds), 3600)),
     )
     serve(config)
     return 0
