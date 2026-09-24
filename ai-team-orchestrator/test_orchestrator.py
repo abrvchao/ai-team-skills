@@ -72,6 +72,7 @@ class OrchestratorTests(unittest.TestCase):
             artifacts = adapter.artifacts(task_id)
             self.assertEqual(len(artifacts), 1)
             self.assertTrue(artifacts[0].path.startswith("workspace/.orchestrator-demo/"))
+            adapter.shutdown()
             store.close()
 
     def test_no_ack_never_becomes_started(self):
@@ -96,6 +97,7 @@ class OrchestratorTests(unittest.TestCase):
             self.assertFalse(failed.started)
             self.assertIsNone(failed.started_at)
             self.assertIn("without ACK", failed.error or "")
+            adapter.shutdown()
             store.close()
 
     def test_worker_cannot_claim_completion_then_exit_nonzero(self):
@@ -113,6 +115,7 @@ class OrchestratorTests(unittest.TestCase):
             self.assertTrue(failed.started)
             self.assertEqual(failed.exit_code, 3)
             self.assertIn("code 3", failed.error or "")
+            adapter.shutdown()
             store.close()
 
     def test_cancel_running_worker(self):
@@ -131,6 +134,7 @@ class OrchestratorTests(unittest.TestCase):
             cancelled = adapter.cancel(task_id)
             self.assertEqual(cancelled.status, TaskStatus.CANCELLED)
             self.assertIsNotNone(cancelled.finished_at)
+            adapter.shutdown()
             store.close()
 
     def test_followup_message_is_persisted_for_worker(self):
@@ -151,6 +155,7 @@ class OrchestratorTests(unittest.TestCase):
             message_file = state / "tasks" / task_id / "messages.jsonl"
             self.assertIn("Please also run tests.", message_file.read_text(encoding="utf-8"))
             adapter.cancel(task_id)
+            adapter.shutdown()
             store.close()
 
     def test_workspace_escape_and_secret_metadata_are_rejected(self):
@@ -174,6 +179,7 @@ class OrchestratorTests(unittest.TestCase):
                         metadata={"headers": {"Authorization": "Bearer secret"}},
                     )
                 )
+            adapter.shutdown()
             store.close()
 
     def test_registry_exposes_unconfigured_future_agents_truthfully(self):
@@ -244,7 +250,8 @@ class OrchestratorTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
-                store.close()
+                adapter.shutdown()
+            store.close()
 
 
 if __name__ == "__main__":
