@@ -1,0 +1,40 @@
+name: AI Team Orchestrator
+
+on:
+  push:
+    paths:
+      - "ai-team-orchestrator/**"
+      - ".github/workflows/ai-team-orchestrator.yml"
+  pull_request:
+    paths:
+      - "ai-team-orchestrator/**"
+      - ".github/workflows/ai-team-orchestrator.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-team-orchestrator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile
+        run: python -m compileall -q .
+
+      - name: Validate protocol schemas
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in sorted(Path("schemas").glob("*.json")):
+              json.loads(path.read_text(encoding="utf-8"))
+              print(path)
+          PY
+
+      - name: Unit + subprocess integration tests
+        run: python -m unittest discover -v
