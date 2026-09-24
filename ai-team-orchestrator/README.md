@@ -258,6 +258,152 @@ Tests execute a real subprocess fake worker and verify:
 - Supervisor HTTP client;
 - Gemini/Grok/Codex placeholders remain unavailable.
 
+## MCP facade for ChatGPT / Codex
+
+V0.2 exposes the same control plane as focused MCP tools:
+
+```
+list_agents       # read
+list_tasks        # read
+get_task          # read
+list_artifacts    # read
+submit_task       # write/action
+send_message      # write/action
+cancel_task       # destructive action
+```
+
+The MCP layer delegates to the local bridge. It does not launch DSH itself.
+
+Install the official MCP Python SDK:
+
+```bash
+python -m pip install -r requirements-mcp.txt
+```
+
+Start the local bridge first:
+
+```bash
+export DSH_INNER_COMMAND_JSON='[
+  "/absolute/path/to/dsh",
+  "run",
+  "--prompt-file",
+  "{prompt_file}"
+]'
+
+export DSH_COMMAND_JSON='[
+  "python",
+  "dsh_cli_wrapper.py",
+  "{request_file}"
+]'
+
+python bridge.py \
+  --workspace-root /Volumes/brvmac_ssd/dsh
+```
+
+Then start the MCP facade:
+
+```bash
+export AGENT_BRIDGE_URL=http://127.0.0.1:8765
+python mcp_server.py
+```
+
+The Streamable HTTP MCP endpoint is:
+
+```
+http://127.0.0.1:3000/mcp
+```
+
+Inspect locally:
+
+```bash
+npx @modelcontextprotocol/inspector@latest
+```
+
+Choose **Streamable HTTP** and enter:
+
+```
+http://127.0.0.1:3000/mcp
+```
+
+### Why ChatGPT cannot use localhost directly
+
+Hosted ChatGPT does not connect directly to a local MCP server. For a private
+Mac-hosted server, use OpenAI Secure MCP Tunnel (or deploy a remote HTTPS MCP
+endpoint).
+
+### Secure MCP Tunnel runbook
+
+Prerequisites:
+
+- an OpenAI Platform `tunnel_id`;
+- a runtime API key permitted to use that tunnel;
+- ChatGPT developer-mode/plugin access appropriate for the target workspace;
+- `tunnel-client` installed on the Mac that can reach the local MCP server.
+
+Initialize a local HTTP MCP tunnel profile:
+
+```bash
+export CONTROL_PLANE_API_KEY="sk-..."
+
+tunnel-client init \
+  --profile ai-team-local \
+  --tunnel-id tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --mcp-server-url http://127.0.0.1:3000/mcp
+
+tunnel-client doctor --profile ai-team-local --explain
+tunnel-client run --profile ai-team-local
+```
+
+Keep the tunnel client running.
+
+When creating the ChatGPT developer-mode plugin/app, choose **Tunnel** and
+select/paste the same `tunnel_id`.
+
+Only after ChatGPT can list these MCP tools:
+
+```
+list_agents
+submit_task
+get_task
+send_message
+list_artifacts
+cancel_task
+```
+
+is the ChatGPT → Orchestrator path connected.
+
+Only after a real `submit_task(agent_id="dsh", ...)` produces a task whose
+bridge-derived state changes:
+
+```
+queued
+→ acknowledged
+→ running
+```
+
+may the Supervisor say “DSH has started.”
+
+The final chain is:
+
+```
+ChatGPT
+   ↓ MCP tool call
+Secure MCP Tunnel
+   ↓
+mcp_server.py
+   ↓
+bridge.py
+   ↓
+dsh_cli_wrapper.py
+   ↓
+real DSH CLI
+   ↓
+workspace / git / tests / artifacts
+```
+
+Secrets such as the tunnel runtime key and DSH/provider credentials stay in the
+local runtime environment and are not task fields or tool results.
+
 ## Next
 
 After DSH is connected with its real local CLI command:
