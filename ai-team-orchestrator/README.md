@@ -258,6 +258,154 @@ Tests execute a real subprocess fake worker and verify:
 - Supervisor HTTP client;
 - Gemini/Grok/Codex placeholders remain unavailable.
 
+## Registered pull workers — preferred long-running mode
+
+V0.3 removes the requirement that the Supervisor/Bridge know the local DSH
+executable.
+
+The preferred runtime is now:
+
+```
+ChatGPT / Supervisor
+        ↓
+      MCP
+        ↓
+Agent Bridge
+        ↓
+queued task
+        ↓
+DSH pull_worker.py  ← register / heartbeat / lease
+        ↓
+real DSH process
+```
+
+This changes the operational model:
+
+- the Bridge can accept a DSH task while no DSH worker is online;
+- that task remains `queued`, `started=false`;
+- a registered DSH worker leases the task;
+- lease = worker ACK → `acknowledged`;
+- `started_at` is still empty after lease;
+- only after the worker successfully starts the real configured process does it
+  report `running`;
+- only then may the Supervisor say “DSH has started.”
+
+### One-time DSH worker setup
+
+The exact local DSH command is machine-specific and is configured **only on the
+DSH machine**, not in ChatGPT, MCP, task payloads, or GitHub Issues.
+
+Example command shape:
+
+```bash
+cd ai-team-orchestrator
+
+export DSH_INNER_COMMAND_JSON='[
+  "/absolute/path/to/dsh",
+  "run",
+  "--prompt-file",
+  "{prompt_file}"
+]'
+
+python pull_worker.py \
+  --bridge http://127.0.0.1:8765 \
+  --agent-id dsh \
+  --label "DSH Mac worker"
+```
+
+The worker command may use these placeholders:
+
+```
+{task_id}
+{workspace}
+{request_file}
+{prompt_file}
+{message_file}
+{stdout_file}
+{stderr_file}
+{artifact_manifest}
+{task_dir}
+```
+
+Once this process is kept running, future tasks require no manual copy/paste.
+
+### Pull-worker bridge protocol
+
+Worker registration:
+
+```
+POST /workers/register
+```
+
+Worker lifecycle:
+
+```
+POST /workers/{worker_id}/heartbeat
+POST /workers/{worker_id}/lease
+GET  /workers/{worker_id}
+GET  /tasks/{task_id}/messages
+POST /tasks/{task_id}/events
+```
+
+Registration returns a bearer token once. The bridge stores only its hash.
+Worker tokens cannot control tasks leased to a different worker.
+
+The bridge remains bound to localhost by default. Do not expose the worker
+registration API directly to the public Internet.
+
+### Agent availability semantics
+
+`list_agents` now distinguishes:
+
+```
+configured  = an execution transport can accept/queue tasks
+queueable   = submit_task may persist a queued task
+available   = push-local execution exists OR a live pull worker heartbeat exists
+```
+
+Therefore this is valid and intentional:
+
+```json
+{
+  "agent_id": "dsh",
+  "configured": true,
+  "queueable": true,
+  "available": false
+}
+```
+
+It means DSH can receive queued work, but **no live DSH worker is online**.
+
+### Follow-up messages
+
+The worker periodically mirrors Supervisor messages into:
+
+```
+<workspace>/.ai-team-worker/<task_id>/messages.jsonl
+```
+
+The configured agent process is told where that file is located. Agents that
+support live instruction polling can consume it while running.
+
+### Artifacts
+
+The worker always returns stdout/stderr as review artifacts for an execution
+that actually started.
+
+An agent may optionally append JSONL artifact declarations to:
+
+```
+<workspace>/.ai-team-worker/<task_id>/artifacts.jsonl
+```
+
+Example:
+
+```json
+{"path":"path/to/file","kind":"file","label":"implementation"}
+```
+
+The Bridge still enforces that artifact paths remain inside the task workspace.
+
 ## MCP facade for ChatGPT / Codex
 
 V0.2 exposes the same control plane as focused MCP tools:
