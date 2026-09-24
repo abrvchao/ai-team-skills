@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abrvchao.github.io/ai-team-orchestrator/task.schema.json",
+  "title": "AI Team Task",
+  "type": "object",
+  "required": ["agent_id", "title", "prompt"],
+  "properties": {
+    "agent_id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1, "maxLength": 200},
+    "prompt": {"type": "string", "minLength": 1},
+    "workspace": {"type": "string", "default": "."},
+    "metadata": {"type": "object", "default": {}}
+  },
+  "additionalProperties": false
+}
