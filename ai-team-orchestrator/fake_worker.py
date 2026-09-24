@@ -26,6 +26,7 @@ def main() -> int:
     mode = str(metadata.get("mode") or "success")
 
     if mode == "no_ack":
+        time.sleep(float(metadata.get("sleep_seconds") or 0.2))
         print("worker exited without protocol ACK", flush=True)
         return 0
 
