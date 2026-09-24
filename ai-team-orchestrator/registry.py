@@ -13,6 +13,7 @@ class AgentDescriptor:
     available: bool
     capabilities: list[str]
     transport: str
+    queueable: bool = False
     note: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,17 +39,32 @@ class AgentRegistry:
         return [self._agents[key] for key in sorted(self._agents)]
 
     @classmethod
-    def default(cls, *, dsh_configured: bool) -> "AgentRegistry":
+    def default(
+        cls,
+        *,
+        dsh_configured: bool,
+        dsh_available: bool | None = None,
+        dsh_queueable: bool | None = None,
+    ) -> "AgentRegistry":
         registry = cls()
+        available = dsh_configured if dsh_available is None else dsh_available
+        queueable = dsh_configured if dsh_queueable is None else dsh_queueable
         registry.register(
             AgentDescriptor(
                 agent_id="dsh",
                 display_name="DSH",
                 configured=dsh_configured,
-                available=dsh_configured,
+                available=available,
                 capabilities=["implementation", "testing", "debugging", "git"],
                 transport="local_bridge",
-                note="" if dsh_configured else "DSH command is not configured",
+                queueable=queueable,
+                note=(
+                    ""
+                    if available
+                    else "DSH is configured/queueable but no active worker is online"
+                    if dsh_configured
+                    else "DSH transport is not configured"
+                ),
             )
         )
         for agent_id, name, caps in (
