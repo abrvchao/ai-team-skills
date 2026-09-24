@@ -105,6 +105,7 @@ class DSHAdapter(AgentAdapter):
         self.config = config
         self.store = store
         self._processes: dict[str, subprocess.Popen[str]] = {}
+        self._threads: dict[str, threading.Thread] = {}
         self._completion_signals: set[str] = set()
         self._lock = threading.RLock()
 
@@ -158,6 +159,8 @@ class DSHAdapter(AgentAdapter):
             name=f"dsh-{record.task_id}",
             daemon=True,
         )
+        with self._lock:
+            self._threads[record.task_id] = thread
         thread.start()
         return record.task_id
 
@@ -197,7 +200,41 @@ class DSHAdapter(AgentAdapter):
                 process.terminate()
             except ProcessLookupError:
                 pass
-        return self.store.transition(task_id, TaskStatus.CANCELLED)
+        cancelled = self.store.transition(task_id, TaskStatus.CANCELLED)
+        self.wait(task_id, timeout=3.0)
+        return cancelled
+
+    def wait(self, task_id: str, timeout: float | None = None) -> TaskRecord:
+        with self._lock:
+            thread = self._threads.get(task_id)
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=timeout)
+        return self.store.get_task(task_id)
+
+    def shutdown(self, timeout: float = 3.0) -> None:
+        with self._lock:
+            task_ids = list(self._threads)
+        for task_id in task_ids:
+            try:
+                task = self.store.get_task(task_id)
+            except Exception:
+                continue
+            if task.status not in TERMINAL_STATUSES:
+                try:
+                    self.cancel(task_id)
+                except Exception:
+                    pass
+        with self._lock:
+            threads = list(self._threads.values())
+        deadline = None if timeout is None else __import__("time").monotonic() + timeout
+        for thread in threads:
+            if thread is threading.current_thread():
+                continue
+            remaining = None if deadline is None else max(
+                0.0,
+                deadline - __import__("time").monotonic(),
+            )
+            thread.join(timeout=remaining)
 
     def _task_dir(self, task_id: str) -> Path:
         return self.config.state_dir / "tasks" / task_id
@@ -406,9 +443,14 @@ class DSHAdapter(AgentAdapter):
                     error=f"worker exited with code {exit_code}",
                 )
         finally:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
             with self._lock:
                 self._processes.pop(task_id, None)
                 self._completion_signals.discard(task_id)
+                self._threads.pop(task_id, None)
 
 
 def _json_body(handler: BaseHTTPRequestHandler, *, max_bytes: int = 1024 * 1024) -> dict[str, Any]:
@@ -593,6 +635,7 @@ def serve(config: BridgeConfig) -> None:
         pass
     finally:
         server.server_close()
+        dsh.shutdown()
         store.close()
 
 
