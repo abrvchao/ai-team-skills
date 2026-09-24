@@ -67,6 +67,8 @@ class TaskRecord:
     status: TaskStatus
     created_at: datetime
     metadata: dict[str, Any] = field(default_factory=dict)
+    worker_id: str | None = None
+    leased_at: datetime | None = None
     acknowledged_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -86,6 +88,8 @@ class TaskRecord:
             "workspace": self.workspace,
             "status": self.status.value,
             "created_at": iso(self.created_at),
+            "worker_id": self.worker_id,
+            "leased_at": iso(self.leased_at),
             "acknowledged_at": iso(self.acknowledged_at),
             "started_at": iso(self.started_at),
             "finished_at": iso(self.finished_at),
