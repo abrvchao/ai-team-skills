@@ -88,7 +88,6 @@ def main() -> int:
     ]
 
     emit({"type": "ack"})
-    emit({"type": "status", "status": "running"})
 
     try:
         process = subprocess.Popen(
@@ -111,6 +110,9 @@ def main() -> int:
             }
         )
         return 127
+
+    # Only a successfully spawned inner DSH process proves actual execution.
+    emit({"type": "status", "status": "running"})
 
     out_thread = threading.Thread(
         target=pump,
