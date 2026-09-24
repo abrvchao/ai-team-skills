@@ -283,6 +283,24 @@ class TaskStore:
             self.conn.commit()
         return self.get_task(task_id)
 
+    def reserve_task(self, task_id: str, worker_id: str) -> TaskRecord:
+        """Reserve a queued task for push-local execution without implying ACK."""
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE tasks
+                SET worker_id = ?
+                WHERE task_id = ?
+                  AND status = ?
+                  AND worker_id IS NULL
+                """,
+                (worker_id, task_id, TaskStatus.QUEUED.value),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("task is not available for reservation")
+            self.conn.commit()
+        return self.get_task(task_id)
+
     def add_message(self, task_id: str, role: str, content: str) -> None:
         self.get_task(task_id)
         with self._lock:
