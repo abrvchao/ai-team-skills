@@ -14,6 +14,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Sequence
 
 from collector import RadarStore
@@ -282,6 +283,14 @@ def persist_radar_rankings(
             )
 
 
+def _workspace_path(path: str, workspace_id: str | None) -> str:
+    """Keep append-only radar artifacts inside one workspace namespace."""
+    if not workspace_id:
+        return path
+    source = Path(path)
+    return str(source.parent / workspace_id / source.name)
+
+
 def run_discovery(
     *,
     scope: str = "AI",
@@ -312,6 +321,10 @@ def run_discovery(
     country: str = "US",
     include_research_pack: bool = False,
 ) -> dict[str, Any]:
+    snapshot_path = _workspace_path(snapshot_path, workspace_id)
+    cache_path = _workspace_path(cache_path, workspace_id)
+    content_snapshot_path = _workspace_path(content_snapshot_path, workspace_id)
+
     seed = collect_seed_events(
         scope=scope,
         limit=max(1, min(seed_limit, 50)),
