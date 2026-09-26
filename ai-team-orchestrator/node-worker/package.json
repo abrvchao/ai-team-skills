@@ -1,0 +1,16 @@
+{
+  "name": "@ai-team/orchestrator-node-worker",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/client.js && node --check src/worker.js && node --check src/index.js"
+  }
+}
