@@ -41,3 +41,13 @@ jobs:
 
       - name: Unit + subprocess integration tests
         run: python -m unittest discover -v
+
+      - name: Node worker syntax
+        run: |
+          cd node-worker
+          npm run check
+
+      - name: Node worker tests
+        run: |
+          cd node-worker
+          npm test
