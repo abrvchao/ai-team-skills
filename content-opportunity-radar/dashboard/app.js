@@ -7,6 +7,7 @@ const state = {
   opportunities: [],
   providers: [],
   selectedTopicId: null,
+  dashboardLoadToken: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -360,6 +361,7 @@ function workspaceQuery() {
 }
 
 async function openOpportunity(topicId) {
+  const requestContext = `${state.workspaceId}:${state.scope}:${topicId}`;
   state.selectedTopicId = topicId;
   const panel = $("detail-panel");
   panel.hidden = false;
@@ -376,7 +378,10 @@ async function openOpportunity(topicId) {
       api(`/v1/opportunities/${encoded}/history?scope=${scope}&limit=90${workspace}`),
     ]);
 
-    if (state.selectedTopicId !== topicId) return;
+    if (
+      state.selectedTopicId !== topicId
+      || requestContext !== `${state.workspaceId}:${state.scope}:${topicId}`
+    ) return;
 
     $("detail-rank").textContent = `Rank #${detail.rank} · ${detail.scope}`;
     $("detail-title").textContent = detail.topic;
@@ -439,21 +444,26 @@ async function loadWorkspaces() {
 
 async function loadDashboard() {
   clearError();
+  const loadToken = ++state.dashboardLoadToken;
+  const workspaceId = state.workspaceId;
+  const scopeValue = state.scope;
   $("opportunity-status").textContent = "Loading";
   $("opportunity-status").className = "status-pill neutral";
   try {
-    const scope = encodeURIComponent(state.scope);
-    const opportunityPath = state.workspaceId
-      ? `/v1/workspaces/${encodeURIComponent(state.workspaceId)}/opportunities?limit=20`
+    const scope = encodeURIComponent(scopeValue);
+    const opportunityPath = workspaceId
+      ? `/v1/workspaces/${encodeURIComponent(workspaceId)}/opportunities?limit=20`
       : `/v1/opportunities?scope=${scope}&limit=20`;
 
     const [opportunities, providers] = await Promise.all([
       api(opportunityPath),
       api("/v1/providers"),
     ]);
+    if (loadToken !== state.dashboardLoadToken) return;
     renderProviders(providers.items || []);
     renderOpportunities(opportunities);
   } catch (error) {
+    if (loadToken !== state.dashboardLoadToken) return;
     showError(`Radar load failed: ${error.message}`);
     renderProviders([]);
     renderOpportunities({ run: null, items: [] });
