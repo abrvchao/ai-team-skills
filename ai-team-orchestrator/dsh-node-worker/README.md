@@ -13,6 +13,14 @@ DSH_HOME="$HOME/.dsh" \
 node src/index.js
 ```
 
+## Readiness gate
+
+At process startup the adapter runs a minimal model preflight before calling
+`AgentWorker.start()`. A successful preflight is followed by worker registration
+and heartbeat. If the model is unavailable, the DSH process remains alive and
+reports `available: false, reason: "model_unavailable"` to the Bridge; it does
+not lease formal tasks and retries readiness periodically.
+
 `handleTask` passes task title, prompt, workspace, cancellation, and follow-up
 messages to the real DSH headless runner. It reports the task outputs required by
 the smoke and CN-DSH-001 tasks as artifacts.

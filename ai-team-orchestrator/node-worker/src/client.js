@@ -66,6 +66,14 @@ export class BridgeClient {
     }
   }
 
+  async reportReadiness({ agentId, available, reason = "" }) {
+    return this.#request("POST", "/workers/readiness", {
+      agent_id: agentId,
+      available: Boolean(available),
+      reason,
+    });
+  }
+
   async register({ agentId, label = "", capabilities = [] }) {
     const payload = await this.#request("POST", "/workers/register", {
       agent_id: agentId,

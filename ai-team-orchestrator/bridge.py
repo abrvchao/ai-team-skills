@@ -16,6 +16,7 @@ import os
 import shlex
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -493,6 +494,8 @@ def create_handler(
     dsh: DSHAdapter,
     config: BridgeConfig,
 ):
+    readiness_state: dict[str, dict[str, Any]] = {}
+
     def sync_registry() -> None:
         dsh_agent = registry.get("dsh")
         workers = store.list_workers(
@@ -500,9 +503,16 @@ def create_handler(
             ttl_seconds=config.worker_ttl_seconds,
         )
         pull_online = any(worker["online"] for worker in workers)
+        readiness = readiness_state.get("dsh")
+        readiness_fresh = bool(
+            readiness and (time.time() - readiness["updated_at"] <= config.worker_ttl_seconds)
+        )
         dsh_agent.configured = config.queueable
         dsh_agent.queueable = config.queueable
         dsh_agent.available = config.configured or pull_online
+        dsh_agent.reason = ""
+        if not dsh_agent.available and readiness_fresh:
+            dsh_agent.reason = str(readiness.get("reason") or "")
         if config.configured and pull_online:
             dsh_agent.transport = "local_push+registered_pull"
         elif config.configured:
@@ -513,6 +523,8 @@ def create_handler(
             dsh_agent.transport = "not_configured"
         if dsh_agent.available:
             dsh_agent.note = ""
+        elif dsh_agent.reason:
+            dsh_agent.note = f"DSH is online but unavailable: {dsh_agent.reason}"
         elif dsh_agent.configured:
             dsh_agent.note = "DSH is queueable; no active worker is online"
         else:
@@ -738,6 +750,21 @@ def create_handler(
         def do_POST(self) -> None:
             path = urlparse(self.path).path.rstrip("/") or "/"
             try:
+                if path == "/workers/readiness":
+                    body = _json_body(self)
+                    agent_id = str(body.get("agent_id") or "").strip()
+                    descriptor = registry.get(agent_id)
+                    if not descriptor.configured:
+                        raise RuntimeError(f"agent {agent_id} is not configured")
+                    readiness_state[agent_id] = {
+                        "available": bool(body.get("available")),
+                        "reason": str(body.get("reason") or "")[:160],
+                        "updated_at": time.time(),
+                    }
+                    sync_registry()
+                    self._json(200, registry.get(agent_id).to_dict())
+                    return
+
                 if path == "/workers/register":
                     if not config.allow_pull_workers:
                         raise RuntimeError("registered pull workers are disabled")

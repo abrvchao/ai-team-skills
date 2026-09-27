@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
-import { AgentWorker } from "../../node-worker/src/index.js";
+import { AgentWorker, BridgeClient } from "../../node-worker/src/index.js";
 
 const DSH_BIN = process.env.DSH_BIN ||
   "/Users/brvchaoliu/.npm/_npx/1da1392061ab1944/node_modules/@deepseek-ai/dsh/lib/bin.js";
@@ -138,6 +138,33 @@ export async function handleTask(ctx) {
   }
 }
 
+export async function preflightModel() {
+  const controller = new AbortController();
+  return runWithTransientPolicy({
+    task: { task_id: "dsh-model-preflight", title: "DSH model preflight", workspace: process.cwd(), prompt: "" },
+    prompt: "仅返回：DSH_MODEL_OK",
+    signal: controller.signal,
+  });
+}
+
+export async function waitForModel(client, { retryIntervalMs = 30_000 } = {}) {
+  while (true) {
+    try {
+      await preflightModel();
+      await client.reportReadiness({ agentId: "dsh", available: true });
+      return;
+    } catch (error) {
+      await client.reportReadiness({
+        agentId: "dsh",
+        available: false,
+        reason: "model_unavailable",
+      }).catch(() => {});
+      console.error(`DSH readiness: model_unavailable: ${error.message}`);
+      await sleep(retryIntervalMs);
+    }
+  }
+}
+
 export function createWorker(options = {}) {
   return new AgentWorker({
     bridgeUrl: process.env.AI_TEAM_BRIDGE_URL ?? "http://127.0.0.1:8765",
@@ -150,6 +177,10 @@ export function createWorker(options = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const client = new BridgeClient({
+    baseUrl: process.env.AI_TEAM_BRIDGE_URL ?? "http://127.0.0.1:8765",
+  });
+  await waitForModel(client);
   const worker = createWorker();
   const stop = () => worker.stop();
   process.once("SIGINT", stop);
