@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import shlex
 import subprocess
 import threading
@@ -493,7 +494,10 @@ def create_handler(
     registry: AgentRegistry,
     dsh: DSHAdapter,
     config: BridgeConfig,
+    bootstrap_token: str = "",
 ):
+    # Model-health reports only. Availability is never derived from here; it is
+    # owned by registered, live workers.
     readiness_state: dict[str, dict[str, Any]] = {}
 
     def sync_registry() -> None:
@@ -751,14 +755,25 @@ def create_handler(
             path = urlparse(self.path).path.rstrip("/") or "/"
             try:
                 if path == "/workers/readiness":
+                    if not bootstrap_token:
+                        raise PermissionError("readiness endpoint is not enabled")
+                    supplied = str(self.headers.get("X-Bootstrap-Token") or "")
+                    if not supplied or not secrets.compare_digest(supplied, bootstrap_token):
+                        raise PermissionError("a valid bootstrap token is required for readiness")
                     body = _json_body(self)
+                    if "available" in body:
+                        raise ValueError(
+                            "readiness cannot control availability; report model_available"
+                        )
                     agent_id = str(body.get("agent_id") or "").strip()
                     descriptor = registry.get(agent_id)
                     if not descriptor.configured:
                         raise RuntimeError(f"agent {agent_id} is not configured")
+                    model_available = bool(body.get("model_available"))
                     readiness_state[agent_id] = {
-                        "available": bool(body.get("available")),
-                        "reason": str(body.get("reason") or "")[:160],
+                        "reason": ""
+                        if model_available
+                        else str(body.get("reason") or "model_unavailable")[:160],
                         "updated_at": time.time(),
                     }
                     sync_registry()
@@ -894,9 +909,26 @@ def load_command(value: str | None) -> list[str]:
     return shlex.split(raw)
 
 
+def bootstrap_token_path(config: BridgeConfig) -> Path:
+    return config.state_dir / "bootstrap-token"
+
+
+def write_bootstrap_token(config: BridgeConfig) -> str:
+    """Create the local readiness/bootstrap token for this Bridge instance."""
+    token = secrets.token_urlsafe(32)
+    path = bootstrap_token_path(config)
+    path.write_text(token + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return token
+
+
 def serve(config: BridgeConfig) -> None:
     config.state_dir.mkdir(parents=True, exist_ok=True)
     config.workspace_root.mkdir(parents=True, exist_ok=True)
+    bootstrap_token = write_bootstrap_token(config)
     store = TaskStore(config.database)
     dsh = DSHAdapter(config, store)
     registry = AgentRegistry.default(
@@ -916,6 +948,7 @@ def serve(config: BridgeConfig) -> None:
             registry=registry,
             dsh=dsh,
             config=config,
+            bootstrap_token=bootstrap_token,
         ),
     )
     print(
@@ -927,6 +960,7 @@ def serve(config: BridgeConfig) -> None:
                 "dsh_push_configured": config.configured,
                 "pull_workers_enabled": config.allow_pull_workers,
                 "workspace_root": str(config.workspace_root),
+                "bootstrap_token_file": str(bootstrap_token_path(config)),
             },
             ensure_ascii=False,
         ),

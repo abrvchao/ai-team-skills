@@ -5,6 +5,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "start": "node src/index.js",
-    "check": "node --check src/index.js"
+    "check": "node --check src/index.js && node --check src/readiness.js",
+    "test": "node --test"
   }
 }

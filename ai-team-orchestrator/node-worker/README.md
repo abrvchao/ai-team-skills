@@ -74,6 +74,13 @@ return {
 
 Artifact path validation remains server-side in the Bridge.
 
+## Readiness reporting
+
+`BridgeClient.reportReadiness({ agentId, modelAvailable, reason })` reports model
+health to a Bridge that has a bootstrap token configured. It is a status report,
+not an availability control: availability always requires a registered, live
+worker. The Bridge rejects a payload that tries to set `available` directly.
+
 ## Test
 
 ```bash

@@ -12,6 +12,7 @@ export class BridgeClient {
     baseUrl = "http://127.0.0.1:8765",
     fetchImpl = globalThis.fetch,
     timeoutMs = 10_000,
+    bootstrapToken = "",
   } = {}) {
     if (typeof fetchImpl !== "function") {
       throw new TypeError("A fetch implementation is required (Node 18+ recommended)");
@@ -21,12 +22,13 @@ export class BridgeClient {
     this.timeoutMs = Math.max(100, Number(timeoutMs) || 10_000);
     this.workerId = null;
     this.token = null;
+    this.bootstrapToken = String(bootstrapToken || "");
   }
 
-  async #request(method, path, body, { auth = false } = {}) {
+  async #request(method, path, body, { auth = false, headers: extraHeaders = {} } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    const headers = { Accept: "application/json" };
+    const headers = { Accept: "application/json", ...extraHeaders };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (auth) {
       if (!this.token) throw new BridgeError("Worker is not registered", { code: "not_registered" });
@@ -72,6 +74,24 @@ export class BridgeClient {
       available: Boolean(available),
       reason,
     });
+  }
+
+  /**
+   * Report model health to the local Bridge.
+   *
+   * This is a bootstrap-status report, not an availability control: it carries
+   * `model_available` and an optional reason. The Bridge decides availability
+   * from registered, live workers only. Requires the local bootstrap token.
+   */
+  async reportReadiness({ agentId, modelAvailable, reason = "", bootstrapToken = this.bootstrapToken } = {}) {
+    const headers = {};
+    if (bootstrapToken) headers["X-Bootstrap-Token"] = bootstrapToken;
+    return this.#request(
+      "POST",
+      "/workers/readiness",
+      { agent_id: agentId, model_available: Boolean(modelAvailable), reason },
+      { headers },
+    );
   }
 
   async register({ agentId, label = "", capabilities = [] }) {
