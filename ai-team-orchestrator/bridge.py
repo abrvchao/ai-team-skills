@@ -96,6 +96,7 @@ class BridgeConfig:
     port: int = 8765
     allow_pull_workers: bool = True
     worker_ttl_seconds: int = 90
+    enabled_pull_agents: tuple[str, ...] = ("dsh",)
 
     @property
     def configured(self) -> bool:
@@ -104,25 +105,61 @@ class BridgeConfig:
 
     @property
     def queueable(self) -> bool:
-        return self.configured or self.allow_pull_workers
+        return self.configured or (
+            self.allow_pull_workers and "dsh" in self.enabled_pull_agents
+        )
 
 
 class DSHAdapter(AgentAdapter):
+    """Task adapter shared by DSH and explicitly enabled registered pull agents.
+
+    The historical class name is retained for compatibility. Only DSH may use
+    the optional push-local command; other agents are pull-only.
+    """
+
     agent_id = "dsh"
 
-    def __init__(self, config: BridgeConfig, store: TaskStore) -> None:
+    def __init__(
+        self,
+        config: BridgeConfig,
+        store: TaskStore,
+        *,
+        agent_id: str = "dsh",
+        allow_push: bool = True,
+    ) -> None:
         self.config = config
         self.store = store
+        self.agent_id = str(agent_id)
+        self.allow_push = bool(allow_push)
         self._processes: dict[str, subprocess.Popen[str]] = {}
         self._threads: dict[str, threading.Thread] = {}
         self._completion_signals: set[str] = set()
         self._lock = threading.RLock()
 
+    @property
+    def push_configured(self) -> bool:
+        return self.allow_push and self.config.configured
+
+    @property
+    def pull_configured(self) -> bool:
+        return (
+            self.config.allow_pull_workers
+            and self.agent_id in self.config.enabled_pull_agents
+        )
+
+    @property
+    def queueable(self) -> bool:
+        return self.push_configured or self.pull_configured
+
     def submit(self, request: TaskRequest) -> str:
         if request.agent_id != self.agent_id:
-            raise ValueError(f"DSH adapter cannot submit agent {request.agent_id}")
-        if not self.config.queueable:
-            raise RuntimeError("DSH has no configured execution transport")
+            raise ValueError(
+                f"{self.agent_id} adapter cannot submit agent {request.agent_id}"
+            )
+        if not self.queueable:
+            raise RuntimeError(
+                f"{self.agent_id} has no configured execution transport"
+            )
         if _contains_sensitive_metadata(request.metadata):
             raise ValueError("task metadata must not contain credential-shaped fields")
 
@@ -162,14 +199,14 @@ class DSHAdapter(AgentAdapter):
                 "message_file": str(task_dir / "messages.jsonl"),
             },
         )
-        if self.config.configured:
+        if self.push_configured:
             # Reserve push-local tasks so registered pull workers cannot race
             # the local subprocess before it emits its first ACK.
-            self.store.reserve_task(record.task_id, "push-local:dsh")
+            self.store.reserve_task(record.task_id, f"push-local:{self.agent_id}")
             thread = threading.Thread(
                 target=self._run_task,
                 args=(record.task_id,),
-                name=f"dsh-{record.task_id}",
+                name=f"{self.agent_id}-{record.task_id}",
                 daemon=True,
             )
             with self._lock:
@@ -501,38 +538,62 @@ def create_handler(
     readiness_state: dict[str, dict[str, Any]] = {}
 
     def sync_registry() -> None:
-        dsh_agent = registry.get("dsh")
-        workers = store.list_workers(
-            agent_id="dsh",
-            ttl_seconds=config.worker_ttl_seconds,
-        )
-        pull_online = any(worker["online"] for worker in workers)
-        readiness = readiness_state.get("dsh")
-        readiness_fresh = bool(
-            readiness and (time.time() - readiness["updated_at"] <= config.worker_ttl_seconds)
-        )
-        dsh_agent.configured = config.queueable
-        dsh_agent.queueable = config.queueable
-        dsh_agent.available = config.configured or pull_online
-        dsh_agent.reason = ""
-        if not dsh_agent.available and readiness_fresh:
-            dsh_agent.reason = str(readiness.get("reason") or "")
-        if config.configured and pull_online:
-            dsh_agent.transport = "local_push+registered_pull"
-        elif config.configured:
-            dsh_agent.transport = "local_push"
-        elif config.allow_pull_workers:
-            dsh_agent.transport = "registered_pull"
-        else:
-            dsh_agent.transport = "not_configured"
-        if dsh_agent.available:
-            dsh_agent.note = ""
-        elif dsh_agent.reason:
-            dsh_agent.note = f"DSH is online but unavailable: {dsh_agent.reason}"
-        elif dsh_agent.configured:
-            dsh_agent.note = "DSH is queueable; no active worker is online"
-        else:
-            dsh_agent.note = "DSH transport is not configured"
+        for descriptor in registry.list():
+            adapter = dispatcher.adapters.get(descriptor.agent_id)
+            if adapter is None:
+                continue
+
+            workers = store.list_workers(
+                agent_id=descriptor.agent_id,
+                ttl_seconds=config.worker_ttl_seconds,
+            )
+            pull_online = any(worker["online"] for worker in workers)
+            readiness = readiness_state.get(descriptor.agent_id)
+            readiness_fresh = bool(
+                readiness
+                and (
+                    time.time() - readiness["updated_at"]
+                    <= config.worker_ttl_seconds
+                )
+            )
+            push_configured = bool(
+                getattr(adapter, "push_configured", False)
+            )
+            queueable = bool(getattr(adapter, "queueable", False))
+
+            descriptor.configured = queueable
+            descriptor.queueable = queueable
+            descriptor.available = push_configured or pull_online
+            descriptor.reason = ""
+            if not descriptor.available and readiness_fresh:
+                descriptor.reason = str(readiness.get("reason") or "")
+
+            pull_configured = bool(getattr(adapter, "pull_configured", False))
+            if push_configured and pull_online:
+                descriptor.transport = "local_push+registered_pull"
+            elif push_configured:
+                descriptor.transport = "local_push"
+            elif pull_configured:
+                descriptor.transport = "registered_pull"
+            else:
+                descriptor.transport = "not_configured"
+
+            if descriptor.available:
+                descriptor.note = ""
+            elif descriptor.reason:
+                descriptor.note = (
+                    f"{descriptor.display_name} is unavailable: "
+                    f"{descriptor.reason}"
+                )
+            elif descriptor.configured:
+                descriptor.note = (
+                    f"{descriptor.display_name} is queueable; "
+                    "no active worker is online"
+                )
+            else:
+                descriptor.note = (
+                    f"{descriptor.display_name} transport is not configured"
+                )
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "AITeamAgentBridge/0.3"
@@ -649,7 +710,14 @@ def create_handler(
                 metadata = dict(event.get("metadata") or {})
                 if _contains_sensitive_metadata(metadata):
                     raise ValueError("artifact metadata contains credential-shaped fields")
-                reference = dsh._artifact_reference(current, raw_path)
+                artifact_adapter = dispatcher.adapters.get(current.agent_id)
+                if artifact_adapter is None or not hasattr(
+                    artifact_adapter, "_artifact_reference"
+                ):
+                    raise RuntimeError(
+                        f"agent {current.agent_id} cannot register artifacts"
+                    )
+                reference = artifact_adapter._artifact_reference(current, raw_path)
                 store.add_artifact(
                     current.task_id,
                     kind=str(event.get("kind") or "file"),
@@ -935,14 +1003,26 @@ def serve(config: BridgeConfig) -> None:
     bootstrap_token = write_bootstrap_token(config)
     store = TaskStore(config.database)
     dsh = DSHAdapter(config, store)
+    adapters: dict[str, AgentAdapter] = {"dsh": dsh}
+    for agent_id in config.enabled_pull_agents:
+        if agent_id == "dsh":
+            continue
+        adapters[agent_id] = DSHAdapter(
+            config,
+            store,
+            agent_id=agent_id,
+            allow_push=False,
+        )
+
     registry = AgentRegistry.default(
-        dsh_configured=config.queueable,
-        dsh_available=config.configured,
-        dsh_queueable=config.queueable,
+        dsh_configured=dsh.queueable,
+        dsh_available=dsh.push_configured,
+        dsh_queueable=dsh.queueable,
+        configured_pull_agents=set(config.enabled_pull_agents),
     )
     dispatcher = Dispatcher(
         registry=registry,
-        adapters={"dsh": dsh},
+        adapters=adapters,
     )
     server = ThreadingHTTPServer(
         (config.host, config.port),
@@ -963,6 +1043,7 @@ def serve(config: BridgeConfig) -> None:
                 "port": config.port,
                 "dsh_push_configured": config.configured,
                 "pull_workers_enabled": config.allow_pull_workers,
+                "enabled_pull_agents": list(config.enabled_pull_agents),
                 "workspace_root": str(config.workspace_root),
                 "bootstrap_token_file": str(bootstrap_token_path(config)),
             },
@@ -976,7 +1057,9 @@ def serve(config: BridgeConfig) -> None:
         pass
     finally:
         server.server_close()
-        dsh.shutdown()
+        for adapter in adapters.values():
+            if hasattr(adapter, "shutdown"):
+                adapter.shutdown()
         store.close()
 
 
@@ -998,11 +1081,39 @@ def main() -> int:
         default=90,
     )
     parser.add_argument(
+        "--pull-agent",
+        action="append",
+        dest="pull_agents",
+        help=(
+            "Enable a registered pull agent. Repeat for multiple agents. "
+            "Defaults to AI_TEAM_PULL_AGENTS or dsh."
+        ),
+    )
+    parser.add_argument(
         "--dsh-command",
         default=os.getenv("DSH_COMMAND_JSON") or os.getenv("DSH_COMMAND") or "",
         help="Configured DSH argv (JSON array preferred); supports {request_file}, {task_dir}, {workspace}, {task_id}",
     )
     args = parser.parse_args()
+
+    raw_pull_agents = args.pull_agents
+    if raw_pull_agents is None:
+        raw_pull_agents = [
+            item.strip()
+            for item in os.getenv("AI_TEAM_PULL_AGENTS", "dsh").split(",")
+            if item.strip()
+        ]
+    supported_agents = {"dsh", "gemini", "grok", "codex"}
+    enabled_pull_agents = tuple(dict.fromkeys(raw_pull_agents))
+    unknown_agents = [
+        agent_id
+        for agent_id in enabled_pull_agents
+        if agent_id not in supported_agents
+    ]
+    if unknown_agents:
+        parser.error(
+            "unsupported --pull-agent value(s): " + ", ".join(unknown_agents)
+        )
 
     config = BridgeConfig(
         database=Path(args.db),
@@ -1013,6 +1124,7 @@ def main() -> int:
         port=max(1, min(int(args.port), 65535)),
         allow_pull_workers=not args.no_pull_workers,
         worker_ttl_seconds=max(10, min(int(args.worker_ttl_seconds), 3600)),
+        enabled_pull_agents=enabled_pull_agents,
     )
     serve(config)
     return 0
