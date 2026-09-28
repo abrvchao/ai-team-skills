@@ -6,6 +6,7 @@ status, ACK semantics, messages, artifacts, and cancellation.
 """
 from __future__ import annotations
 
+import argparse
 import os
 from typing import Any
 
@@ -128,17 +129,68 @@ def build_server(client: BridgeClient | None = None) -> MCPServer:
     return mcp
 
 
-def main() -> int:
-    host = os.getenv("ORCHESTRATOR_MCP_HOST", "127.0.0.1")
-    port = int(os.getenv("ORCHESTRATOR_MCP_PORT", "3000"))
-    mcp = build_server()
-    mcp.run(
-        transport="streamable-http",
-        host=host,
-        port=port,
-        streamable_http_path="/mcp",
-        stateless_http=True,
-        json_response=True,
+def run_server(
+    mcp: MCPServer,
+    *,
+    transport: str,
+    host: str = "127.0.0.1",
+    port: int = 3000,
+) -> None:
+    """Run one MCP facade over HTTP or local stdio.
+
+    stdio is the preferred transport when a local host such as WebCodex Runner
+    owns the provider process. Streamable HTTP remains the default for the
+    existing standalone MCP deployment path.
+    """
+
+    normalized = transport.strip().lower()
+    if normalized == "stdio":
+        mcp.run(transport="stdio")
+        return
+    if normalized == "streamable-http":
+        mcp.run(
+            transport="streamable-http",
+            host=host,
+            port=port,
+            streamable_http_path="/mcp",
+            stateless_http=True,
+            json_response=True,
+        )
+        return
+    raise ValueError(
+        f"unsupported MCP transport {transport!r}; expected 'stdio' or 'streamable-http'"
+    )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="AI Team Orchestrator MCP facade")
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http"),
+        default=os.getenv("ORCHESTRATOR_MCP_TRANSPORT", "streamable-http"),
+        help="MCP transport (default: streamable-http; use stdio for WebCodex local MCP gateway)",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("ORCHESTRATOR_MCP_HOST", "127.0.0.1"),
+        help="HTTP bind host; ignored for stdio",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("ORCHESTRATOR_MCP_PORT", "3000")),
+        help="HTTP bind port; ignored for stdio",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    run_server(
+        build_server(),
+        transport=args.transport,
+        host=args.host,
+        port=args.port,
     )
     return 0
 
