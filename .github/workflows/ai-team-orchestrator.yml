@@ -61,3 +61,13 @@ jobs:
         run: |
           cd dsh-node-worker
           npm test
+
+      - name: Gemini node worker syntax
+        run: |
+          cd gemini-node-worker
+          npm run check
+
+      - name: Gemini node worker tests
+        run: |
+          cd gemini-node-worker
+          npm test
