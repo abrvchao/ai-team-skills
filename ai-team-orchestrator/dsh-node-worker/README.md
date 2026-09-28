@@ -64,10 +64,24 @@ is rejected.
 ## Task handling
 
 `handleTask` passes task title, prompt, workspace, cancellation, and follow-up
-messages to the real DSH headless runner. It reports the task outputs required by
-the smoke and CN-DSH-001 tasks as artifacts. Task-state truth is unchanged:
+messages to the real DSH headless runner. Task-state truth is unchanged:
 `queued` is not started, a lease is `acknowledged`, and only the real task-handler
 invocation boundary becomes `running`.
+
+## Artifacts
+
+After a task runs, the worker reports the outputs the task actually produced:
+
+- **Required** outputs must exist or the task fails. They come from
+  `metadata.expected_artifacts` (list of workspace-relative paths) and from the
+  known output of a logical task such as `CN-DSH-001`.
+- **Prompt-named** files are reported when they exist. The worker extracts
+  file-like paths from the task prompt, so a task that produces any requested
+  output can return it without a code change; a named file that was not produced
+  is skipped rather than failing the task.
+
+A named file that is missing from the workspace is never reported, and artifact
+paths are still validated server-side by the Bridge.
 
 ## Test
 

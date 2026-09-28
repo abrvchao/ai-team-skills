@@ -88,13 +88,47 @@ function promptFor(task, messages) {
   ].filter(Boolean).join("\n");
 }
 
-function expectedArtifacts(task) {
+/**
+ * File-ish paths named in a task prompt.
+ *
+ * V0.1 hard-coded a single known filename, so a task that produced any other
+ * requested output could not report it as an artifact. These candidates are the
+ * requested outputs; they are reported when the task actually produced them.
+ */
+export function promptArtifacts(prompt) {
+  const pattern = /(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.(?:txt|md|markdown|json|jsonl|csv|tsv|log|ya?ml|html?|xml|pdf|png|jpe?g|svg)/g;
+  const found = [];
+  for (const match of String(prompt || "").matchAll(pattern)) {
+    const candidate = match[0].replace(/^\.\//, "");
+    if (!found.includes(candidate)) found.push(candidate);
+  }
+  return found;
+}
+
+/** Outputs a task must produce; a missing one fails the task. */
+export function requiredArtifacts(task) {
+  const required = [];
+  if (Array.isArray(task.metadata?.expected_artifacts)) {
+    for (const item of task.metadata.expected_artifacts) {
+      const value = String(item || "").trim();
+      if (value && !required.includes(value)) required.push(value);
+    }
+  }
   const logicalTaskId = task.metadata?.logical_task_id || task.task_id;
   if (logicalTaskId === "CN-DSH-001") {
-    return ["docs/research/china-social/zhihu-acquisition.md"];
+    const known = "docs/research/china-social/zhihu-acquisition.md";
+    if (!required.includes(known)) required.push(known);
   }
-  if (/dsh-online-proof\.txt/i.test(task.prompt)) return ["dsh-online-proof.txt"];
-  return [];
+  return required;
+}
+
+/** All artifact paths to look for: required outputs plus prompt-named files. */
+export function expectedArtifacts(task) {
+  const candidates = [...requiredArtifacts(task)];
+  for (const candidate of promptArtifacts(task.prompt)) {
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+  }
+  return candidates;
 }
 
 export async function runDshPrompt({
@@ -187,6 +221,36 @@ export async function preflightModel({ timeoutMs = DEFAULT_PREFLIGHT_TIMEOUT_MS 
   });
 }
 
+/**
+ * Report the artifacts a finished task produced.
+ *
+ * Required outputs (declared in metadata or known for a logical task) must
+ * exist or the task fails. Prompt-named files are reported when present, so a
+ * task that produces any requested output can return it.
+ */
+export async function reportArtifacts({ task, addArtifact }) {
+  const workspace = task.workspace;
+  for (const relativePath of requiredArtifacts(task)) {
+    try {
+      await access(`${workspace}/${relativePath}`);
+    } catch {
+      throw new Error(`Expected artifact was not created: ${relativePath}`);
+    }
+  }
+
+  const artifacts = [];
+  for (const relativePath of expectedArtifacts(task)) {
+    try {
+      await access(`${workspace}/${relativePath}`);
+    } catch {
+      continue;
+    }
+    await addArtifact({ path: relativePath, kind: "file", label: relativePath });
+    artifacts.push({ path: relativePath, kind: "file", label: relativePath });
+  }
+  return artifacts;
+}
+
 export async function handleTask(ctx) {
   const task = ctx.task;
   const messages = ctx.getMessages();
@@ -205,20 +269,10 @@ export async function handleTask(ctx) {
       await ctx.refreshMessages();
     }
 
-    const artifacts = [];
-    for (const relativePath of expectedArtifacts(task)) {
-      try {
-        await access(`${task.workspace}/${relativePath}`);
-        await ctx.addArtifact({
-          path: relativePath,
-          kind: "file",
-          label: relativePath,
-        });
-        artifacts.push({ path: relativePath, kind: "file", label: relativePath });
-      } catch {
-        throw new Error(`Expected artifact was not created: ${relativePath}`);
-      }
-    }
+    const artifacts = await reportArtifacts({
+      task,
+      addArtifact: (artifact) => ctx.addArtifact(artifact),
+    });
     return { artifacts };
   } finally {
     unsubscribe();
