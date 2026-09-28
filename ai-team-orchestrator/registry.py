@@ -46,8 +46,10 @@ class AgentRegistry:
         dsh_configured: bool,
         dsh_available: bool | None = None,
         dsh_queueable: bool | None = None,
+        configured_pull_agents: set[str] | None = None,
     ) -> "AgentRegistry":
         registry = cls()
+        pull_agents = set(configured_pull_agents or set())
         available = dsh_configured if dsh_available is None else dsh_available
         queueable = dsh_configured if dsh_queueable is None else dsh_queueable
         registry.register(
@@ -73,15 +75,21 @@ class AgentRegistry:
             ("grok", "Grok", ["research", "trend_analysis", "adversarial_review"]),
             ("codex", "Codex", ["implementation", "testing", "code_review"]),
         ):
+            configured = agent_id in pull_agents
             registry.register(
                 AgentDescriptor(
                     agent_id=agent_id,
                     display_name=name,
-                    configured=False,
+                    configured=configured,
                     available=False,
                     capabilities=caps,
-                    transport="not_configured",
-                    note="Adapter placeholder only in V0.1",
+                    transport="registered_pull" if configured else "not_configured",
+                    queueable=configured,
+                    note=(
+                        f"{name} is queueable; no active worker is online"
+                        if configured
+                        else "Adapter placeholder only in V0.1"
+                    ),
                 )
             )
         return registry
