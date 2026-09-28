@@ -51,3 +51,13 @@ jobs:
         run: |
           cd node-worker
           npm test
+
+      - name: DSH node worker syntax
+        run: |
+          cd dsh-node-worker
+          npm run check
+
+      - name: DSH node worker tests
+        run: |
+          cd dsh-node-worker
+          npm test
