@@ -14,8 +14,8 @@ No machine-specific path is baked in. Every value is configured or derived:
 | `DSH_NODE_BIN` | Node runtime used to launch DSH. | The current `process.execPath` |
 | `DSH_PROFILE` | DSH profile to boot. | `headless` |
 | `AI_TEAM_BRIDGE_URL` | Local Bridge base URL. | `http://127.0.0.1:8765` |
-| `AI_TEAM_BOOTSTRAP_TOKEN` | Bridge readiness/bootstrap token (preferred). | unset |
-| `AI_TEAM_BOOTSTRAP_TOKEN_FILE` | File holding the bootstrap token, as printed by the Bridge at startup. | unset |
+| `AI_TEAM_BOOTSTRAP_TOKEN` | Bridge readiness/bootstrap token (preferred). **Required.** | unset |
+| `AI_TEAM_BOOTSTRAP_TOKEN_FILE` | File holding the bootstrap token, as printed by the Bridge at startup. **Required** when the token variable is not set. | unset |
 | `DSH_TASK_TIMEOUT_MS` | Bounded timeout for one real task run. | `1800000` |
 
 ```bash
@@ -24,8 +24,15 @@ AI_TEAM_BOOTSTRAP_TOKEN_FILE=./.orchestrator/bootstrap-token \
 node src/index.js
 ```
 
+The bootstrap token is **required** for this adapter, because readiness
+reporting is authenticated. When neither variable is set, the adapter fails fast
+with `bootstrap_token_required` before running any preflight or entering the
+readiness loop, instead of retrying readiness reports that the Bridge would
+reject with `403`.
+
 The Bridge writes its bootstrap token to `<state-dir>/bootstrap-token` with mode
-`0600` and prints `bootstrap_token_file` in its startup line.
+`0600`, created owner-only in one step, and prints `bootstrap_token_file` in its
+startup line.
 
 ## Readiness gate
 

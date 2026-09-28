@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -101,6 +102,28 @@ class ReadinessTests(unittest.TestCase):
             token = write_bootstrap_token(config)
             path = state / "bootstrap-token"
             self.assertTrue(path.exists())
+            self.assertEqual(path.read_text(encoding="utf-8").strip(), token)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_bootstrap_token_replaces_a_loose_pre_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "workspace"
+            root.mkdir(parents=True)
+            state = Path(tmp) / "state"
+            state.mkdir(parents=True)
+            config = BridgeConfig(
+                database=state / "tasks.db",
+                state_dir=state,
+                workspace_root=root,
+                command=[],
+            )
+            path = state / "bootstrap-token"
+            path.write_text("stale-token\n", encoding="utf-8")
+            os.chmod(path, 0o644)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+
+            token = write_bootstrap_token(config)
+            self.assertNotEqual(token, "stale-token")
             self.assertEqual(path.read_text(encoding="utf-8").strip(), token)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { AgentWorker, BridgeClient } from "../../node-worker/src/index.js";
 import {
   DEFAULT_PREFLIGHT_TIMEOUT_MS,
+  requireBootstrapToken,
   runModelPreflight,
   startDshWorker,
 } from "./readiness.js";
@@ -235,22 +236,42 @@ export function createWorker(options = {}) {
   });
 }
 
+/**
+ * Startup path used by the process entrypoint.
+ *
+ * The bootstrap token is required: readiness reporting is authenticated, so a
+ * missing token is a configuration error that must fail before the readiness
+ * loop rather than retry rejected reports forever.
+ */
+export async function startDshFromEnvironment({
+  client,
+  bootstrapToken,
+  preflight = () => preflightModel(),
+  workerFactory = () => createWorker(),
+  ...rest
+} = {}) {
+  const token = requireBootstrapToken(
+    bootstrapToken === undefined ? await resolveBootstrapToken() : bootstrapToken,
+  );
+  if (client) client.bootstrapToken = token;
+  return startDshWorker({
+    client,
+    bootstrapToken: token,
+    preflight,
+    workerFactory,
+    ...rest,
+  });
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const client = new BridgeClient({
     baseUrl: process.env.AI_TEAM_BRIDGE_URL ?? "http://127.0.0.1:8765",
   });
-  const bootstrapToken = await resolveBootstrapToken();
-  if (!bootstrapToken) {
-    console.error(
-      "DSH readiness: no bootstrap token configured; model health will not be reported to the Bridge. " +
-        "Set AI_TEAM_BOOTSTRAP_TOKEN or AI_TEAM_BOOTSTRAP_TOKEN_FILE.",
-    );
+  try {
+    const result = await startDshFromEnvironment({ client });
+    if (!result.started) process.exit(1);
+  } catch (error) {
+    console.error(`DSH startup failed (${error.code || "error"}): ${error.message}`);
+    process.exit(1);
   }
-  client.bootstrapToken = bootstrapToken;
-  const result = await startDshWorker({
-    client,
-    preflight: () => preflightModel(),
-    workerFactory: () => createWorker(),
-  });
-  if (!result.started) process.exit(1);
 }

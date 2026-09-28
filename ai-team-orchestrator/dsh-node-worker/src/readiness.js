@@ -2,8 +2,27 @@ export const READINESS_PROMPT = "仅返回：DSH_MODEL_OK";
 export const READINESS_TOKEN = "DSH_MODEL_OK";
 export const MODEL_UNAVAILABLE = "model_unavailable";
 export const DEFAULT_PREFLIGHT_TIMEOUT_MS = 120_000;
+export const BOOTSTRAP_TOKEN_REQUIRED = "bootstrap_token_required";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Readiness reporting is authenticated by the Bridge bootstrap token. Without
+ * one, every readiness report is rejected, so the adapter refuses to start
+ * instead of looping on 403s. Throws before any readiness loop is entered.
+ */
+export function requireBootstrapToken(value) {
+  const token = String(value ?? "").trim();
+  if (!token) {
+    const error = new Error(
+      "DSH readiness requires a bootstrap token: set AI_TEAM_BOOTSTRAP_TOKEN or " +
+        "AI_TEAM_BOOTSTRAP_TOKEN_FILE to the Bridge's bootstrap_token_file before starting the worker",
+    );
+    error.code = BOOTSTRAP_TOKEN_REQUIRED;
+    throw error;
+  }
+  return token;
+}
 
 /** Normalize a model reply so only the exact readiness token passes. */
 export function normalizeReadinessOutput(stdout) {
@@ -73,6 +92,7 @@ export async function runModelPreflight({
 export async function waitForModel({
   client,
   preflight,
+  bootstrapToken,
   retryIntervalMs = 30_000,
   maxAttempts = Infinity,
   sleepImpl = sleep,
@@ -81,13 +101,20 @@ export async function waitForModel({
   if (!client || typeof client.reportReadiness !== "function") {
     throw new TypeError("client.reportReadiness is required");
   }
+  // Fail fast: without an authenticated report channel the loop could never
+  // succeed, so refuse to enter it.
+  const token = requireBootstrapToken(bootstrapToken);
   const runPreflight = preflight ?? (() => runModelPreflight({}));
   let attempts = 0;
   while (attempts < maxAttempts) {
     attempts += 1;
     try {
       await runPreflight();
-      await client.reportReadiness({ agentId: "dsh", modelAvailable: true });
+      await client.reportReadiness({
+        agentId: "dsh",
+        modelAvailable: true,
+        bootstrapToken: token,
+      });
       return { ready: true, attempts };
     } catch (error) {
       await client
@@ -95,6 +122,7 @@ export async function waitForModel({
           agentId: "dsh",
           modelAvailable: false,
           reason: MODEL_UNAVAILABLE,
+          bootstrapToken: token,
         })
         .catch(() => {});
       logger?.error?.(`DSH readiness: ${MODEL_UNAVAILABLE}: ${error.message}`);
@@ -115,13 +143,18 @@ export async function startDshWorker({
   client,
   workerFactory,
   preflight,
+  bootstrapToken,
   retryIntervalMs = 30_000,
   maxAttempts = Infinity,
   sleepImpl = sleep,
 } = {}) {
+  // Fail fast before the readiness loop; a missing token is a configuration
+  // error, not a transient model failure.
+  requireBootstrapToken(bootstrapToken);
   const readiness = await waitForModel({
     client,
     preflight,
+    bootstrapToken,
     retryIntervalMs,
     maxAttempts,
     sleepImpl,

@@ -914,14 +914,18 @@ def bootstrap_token_path(config: BridgeConfig) -> Path:
 
 
 def write_bootstrap_token(config: BridgeConfig) -> str:
-    """Create the local readiness/bootstrap token for this Bridge instance."""
+    """Create the local readiness/bootstrap token for this Bridge instance.
+
+    The file is created with owner-only permissions in one step, so there is no
+    umask-dependent window where it is readable by anyone else. A pre-existing
+    file is truncated and its mode reset to 0600.
+    """
     token = secrets.token_urlsafe(32)
     path = bootstrap_token_path(config)
-    path.write_text(token + "\n", encoding="utf-8")
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(token + "\n")
+    os.chmod(path, 0o600)
     return token
 
 

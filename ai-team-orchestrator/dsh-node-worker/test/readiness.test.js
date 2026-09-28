@@ -2,13 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  BOOTSTRAP_TOKEN_REQUIRED,
   MODEL_UNAVAILABLE,
   READINESS_PROMPT,
   READINESS_TOKEN,
   isReadinessResponse,
+  requireBootstrapToken,
   runModelPreflight,
+  waitForModel,
   startDshWorker,
 } from "../src/readiness.js";
+
+const TEST_TOKEN = "test-bootstrap-token";
 
 function fakeClient() {
   return {
@@ -84,6 +89,7 @@ test("unavailable model => no registration, available=false, reason=model_unavai
   const client = fakeClient();
   const result = await startDshWorker({
     client,
+    bootstrapToken: TEST_TOKEN,
     preflight: async () => {
       const error = new Error("provider unavailable");
       error.code = "readiness_timeout";
@@ -101,6 +107,7 @@ test("unavailable model => no registration, available=false, reason=model_unavai
     agentId: "dsh",
     modelAvailable: false,
     reason: MODEL_UNAVAILABLE,
+    bootstrapToken: TEST_TOKEN,
   });
 });
 
@@ -117,6 +124,7 @@ test("registration happens only after a successful preflight", async () => {
   };
   const result = await startDshWorker({
     client,
+    bootstrapToken: TEST_TOKEN,
     preflight: async () => {
       order.push("preflight");
     },
@@ -137,6 +145,7 @@ test("an unhealthy model never reaches the worker factory", async () => {
   const client = fakeClient();
   await startDshWorker({
     client,
+    bootstrapToken: TEST_TOKEN,
     preflight: async () => {
       throw new Error("boom");
     },
@@ -158,4 +167,123 @@ test("token matching normalizes insignificant formatting only", () => {
   assert.equal(isReadinessResponse("DSH_MODEL_OKAY"), false);
   assert.equal(isReadinessResponse("not DSH_MODEL_OK"), false);
   assert.equal(isReadinessResponse(""), false);
+});
+
+test("missing bootstrap token fails fast instead of looping", async () => {
+  let preflightCalls = 0;
+  let factoryCalls = 0;
+  let sleeps = 0;
+  const client = fakeClient();
+
+  await assert.rejects(
+    () =>
+      startDshWorker({
+        client,
+        bootstrapToken: "",
+        preflight: async () => {
+          preflightCalls += 1;
+        },
+        workerFactory: () => {
+          factoryCalls += 1;
+          return { async start() {} };
+        },
+        maxAttempts: Infinity,
+        sleepImpl: async () => {
+          sleeps += 1;
+        },
+      }),
+    (error) => error.code === BOOTSTRAP_TOKEN_REQUIRED,
+  );
+
+  assert.equal(preflightCalls, 0, "must not run a preflight without a token");
+  assert.equal(factoryCalls, 0, "must not create a worker without a token");
+  assert.equal(sleeps, 0, "must not enter the retry loop");
+  assert.deepEqual(client.readiness, [], "must not attempt an unauthenticated report");
+});
+
+test("missing bootstrap token is rejected before the readiness loop", async () => {
+  const client = fakeClient();
+  await assert.rejects(
+    () => waitForModel({ client, bootstrapToken: "   ", preflight: async () => {} }),
+    (error) => error.code === BOOTSTRAP_TOKEN_REQUIRED,
+  );
+  assert.deepEqual(client.readiness, []);
+});
+
+test("requireBootstrapToken returns a trimmed token and rejects blanks", () => {
+  assert.equal(requireBootstrapToken("  abc  "), "abc");
+  for (const value of ["", "   ", undefined, null]) {
+    assert.throws(
+      () => requireBootstrapToken(value),
+      (error) =>
+        error.code === BOOTSTRAP_TOKEN_REQUIRED && /AI_TEAM_BOOTSTRAP_TOKEN/.test(error.message),
+    );
+  }
+});
+
+test("environment startup path fails before preflight when no token is configured", async () => {
+  const { startDshFromEnvironment } = await import("../src/index.js");
+  let preflightCalls = 0;
+  let factoryCalls = 0;
+  const client = fakeClient();
+
+  const previousToken = process.env.AI_TEAM_BOOTSTRAP_TOKEN;
+  const previousFile = process.env.AI_TEAM_BOOTSTRAP_TOKEN_FILE;
+  delete process.env.AI_TEAM_BOOTSTRAP_TOKEN;
+  delete process.env.AI_TEAM_BOOTSTRAP_TOKEN_FILE;
+  try {
+    await assert.rejects(
+      () =>
+        startDshFromEnvironment({
+          client,
+          preflight: async () => {
+            preflightCalls += 1;
+          },
+          workerFactory: () => {
+            factoryCalls += 1;
+            return { async start() {} };
+          },
+        }),
+      (error) => error.code === BOOTSTRAP_TOKEN_REQUIRED,
+    );
+  } finally {
+    if (previousToken === undefined) delete process.env.AI_TEAM_BOOTSTRAP_TOKEN;
+    else process.env.AI_TEAM_BOOTSTRAP_TOKEN = previousToken;
+    if (previousFile === undefined) delete process.env.AI_TEAM_BOOTSTRAP_TOKEN_FILE;
+    else process.env.AI_TEAM_BOOTSTRAP_TOKEN_FILE = previousFile;
+  }
+
+  assert.equal(preflightCalls, 0);
+  assert.equal(factoryCalls, 0);
+  assert.deepEqual(client.readiness, []);
+});
+
+test("environment startup path proceeds once a token is configured", async () => {
+  const { startDshFromEnvironment } = await import("../src/index.js");
+  const order = [];
+  const client = {
+    async reportReadiness() {
+      order.push("readiness");
+    },
+    async register() {
+      order.push("register");
+    },
+  };
+  const result = await startDshFromEnvironment({
+    client,
+    bootstrapToken: TEST_TOKEN,
+    preflight: async () => {
+      order.push("preflight");
+    },
+    workerFactory: () => ({
+      async start() {
+        order.push("worker.start");
+        await client.register();
+      },
+    }),
+    sleepImpl: async () => {},
+  });
+  assert.equal(result.started, true);
+  assert.equal(client.bootstrapToken, TEST_TOKEN);
+  assert.deepEqual(order, ["preflight", "readiness", "worker.start", "register"]);
 });
