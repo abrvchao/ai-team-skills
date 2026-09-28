@@ -85,6 +85,7 @@ POST /tasks
 GET  /tasks/{id}
 POST /tasks/{id}/messages
 GET  /tasks/{id}/artifacts
+GET  /tasks/{id}/progress
 POST /tasks/{id}/cancel
 ```
 
@@ -562,3 +563,28 @@ After DSH is connected with its real local CLI command:
 4. Add multi-agent plans, dependencies, review/retry policies.
 5. Move this subproject into its own `abrvchao/ai-team-orchestrator` repository
    when repository-creation access is available.
+
+
+## Progress events
+
+Workers may report structured in-task progress without changing task truth:
+
+```json
+{
+  "type": "progress",
+  "stage": "research_official_api",
+  "message": "Checking documented search endpoints",
+  "current": 2,
+  "total": 5
+}
+```
+
+The Bridge persists these events and exposes them at
+`GET /tasks/{task_id}/progress`. MCP exposes the same data through
+`get_task_progress(task_id)`.
+
+Progress is informational only:
+- it cannot ACK or start a queued task;
+- it does not change `started_at`;
+- workers may emit it only while acknowledged/running/blocked;
+- terminal task truth remains authoritative.
