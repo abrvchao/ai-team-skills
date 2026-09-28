@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from mcp import Client
 
-from mcp_server import build_server
+from mcp_server import build_server, parse_args, run_server
 
 
 class FakeBridgeClient:
@@ -174,3 +175,54 @@ class MCPFacadeTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MCPTransportTests(unittest.TestCase):
+    class FakeServer:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def run(self, **kwargs) -> None:
+            self.calls.append(kwargs)
+
+    def test_stdio_transport_uses_no_http_options(self):
+        server = self.FakeServer()
+        run_server(server, transport="stdio", host="0.0.0.0", port=9999)
+        self.assertEqual(server.calls, [{"transport": "stdio"}])
+
+    def test_streamable_http_transport_preserves_existing_defaults(self):
+        server = self.FakeServer()
+        run_server(
+            server,
+            transport="streamable-http",
+            host="127.0.0.1",
+            port=3000,
+        )
+        self.assertEqual(
+            server.calls,
+            [
+                {
+                    "transport": "streamable-http",
+                    "host": "127.0.0.1",
+                    "port": 3000,
+                    "streamable_http_path": "/mcp",
+                    "stateless_http": True,
+                    "json_response": True,
+                }
+            ],
+        )
+
+    def test_invalid_transport_fails_closed(self):
+        server = self.FakeServer()
+        with self.assertRaisesRegex(ValueError, "unsupported MCP transport"):
+            run_server(server, transport="not-a-transport")
+        self.assertEqual(server.calls, [])
+
+    def test_cli_can_select_stdio(self):
+        args = parse_args(["--transport", "stdio"])
+        self.assertEqual(args.transport, "stdio")
+
+    def test_env_can_select_stdio(self):
+        with patch.dict("os.environ", {"ORCHESTRATOR_MCP_TRANSPORT": "stdio"}):
+            args = parse_args([])
+        self.assertEqual(args.transport, "stdio")
