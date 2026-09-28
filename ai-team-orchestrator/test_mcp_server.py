@@ -55,6 +55,19 @@ class FakeBridgeClient:
         self.read_calls.append(("artifacts", task_id))
         return [{"artifact_id": "a1", "task_id": task_id, "kind": "file", "path": "workspace/x"}]
 
+    def progress(self, task_id: str):
+        self.read_calls.append(("progress", task_id))
+        return [{
+            "event_id": 1,
+            "task_id": task_id,
+            "stage": "research",
+            "message": "Checking docs",
+            "current": 1,
+            "total": 3,
+            "percent": 33.333,
+            "created_at": "2026-09-28T00:00:00+00:00",
+        }]
+
     def submit(self, **kwargs):
         self.write_calls.append(("submit", kwargs))
         return {
@@ -98,6 +111,7 @@ class MCPFacadeTests(unittest.IsolatedAsyncioTestCase):
             "list_agents",
             "list_tasks",
             "get_task",
+            "get_task_progress",
             "list_artifacts",
             "submit_task",
             "send_message",
@@ -116,12 +130,14 @@ class MCPFacadeTests(unittest.IsolatedAsyncioTestCase):
             agents = await client.call_tool("list_agents", {})
             tasks = await client.call_tool("list_tasks", {})
             task = await client.call_tool("get_task", {"task_id": "task_1"})
+            progress = await client.call_tool("get_task_progress", {"task_id": "task_1"})
             artifacts = await client.call_tool("list_artifacts", {"task_id": "task_1"})
 
         self.assertEqual(self.bridge.write_calls, [])
         self.assertEqual(agents.structured_content["agents"][0]["agent_id"], "dsh")
         self.assertFalse(tasks.structured_content["tasks"][0]["started"])
         self.assertEqual(task.structured_content["status"], "queued")
+        self.assertEqual(progress.structured_content["progress"][0]["stage"], "research")
         self.assertEqual(artifacts.structured_content["artifacts"][0]["artifact_id"], "a1")
 
     async def test_submit_preserves_queued_not_started_truth(self):

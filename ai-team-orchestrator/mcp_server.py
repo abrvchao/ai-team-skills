@@ -16,6 +16,8 @@ from mcp.types import ToolAnnotations
 from supervisor import BridgeClient
 
 
+SERVER_VERSION = "0.5.0"
+
 SERVER_INSTRUCTIONS = (
     "AI Team Orchestrator controls registered specialist agents. "
     "Before saying an agent has started, call get_task and verify started=true "
@@ -30,6 +32,7 @@ def build_server(client: BridgeClient | None = None) -> MCPServer:
     )
     mcp = MCPServer(
         "ai-team-orchestrator",
+        version=SERVER_VERSION,
         instructions=SERVER_INSTRUCTIONS,
     )
 
@@ -65,6 +68,17 @@ def build_server(client: BridgeClient | None = None) -> MCPServer:
     def get_task(task_id: str) -> dict[str, Any]:
         """Get one task. queued means not started; rely on started/started_at."""
         return bridge.task(task_id)
+
+    @mcp.tool(
+        title="Get task progress",
+        annotations=ToolAnnotations(
+            read_only_hint=True,
+            open_world_hint=False,
+        ),
+    )
+    def get_task_progress(task_id: str) -> dict[str, Any]:
+        """Return worker-reported progress events. Progress never changes task truth."""
+        return {"progress": bridge.progress(task_id)}
 
     @mcp.tool(
         title="List task artifacts",

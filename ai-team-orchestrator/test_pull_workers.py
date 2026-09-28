@@ -234,6 +234,85 @@ class PullWorkerTests(unittest.TestCase):
             finally:
                 self.close_server(store, adapter, server, thread)
 
+    def test_worker_progress_is_persisted_and_queryable_without_changing_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, store, adapter, registry, server, thread = self.make_server(tmp)
+            try:
+                client = BridgeClient(
+                    f"http://127.0.0.1:{server.server_address[1]}",
+                    timeout=5,
+                )
+                submitted = client.submit(
+                    agent_id="dsh",
+                    title="Progress task",
+                    prompt="Report progress truthfully.",
+                    workspace=".",
+                )
+                task_id = submitted["task_id"]
+                worker = self.register(server.server_address[1])
+                http_json(
+                    server.server_address[1],
+                    "POST",
+                    f"/workers/{worker['worker_id']}/lease",
+                    {},
+                    worker["token"],
+                )
+                http_json(
+                    server.server_address[1],
+                    "POST",
+                    f"/tasks/{task_id}/events",
+                    {"type": "status", "status": "running"},
+                    worker["token"],
+                )
+
+                status, current = http_json(
+                    server.server_address[1],
+                    "POST",
+                    f"/tasks/{task_id}/events",
+                    {
+                        "type": "progress",
+                        "stage": "research",
+                        "message": "Checking official API coverage",
+                        "current": 2,
+                        "total": 5,
+                    },
+                    worker["token"],
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(current["status"], "running")
+                self.assertTrue(current["started"])
+
+                status, payload = http_json(
+                    server.server_address[1],
+                    "GET",
+                    f"/tasks/{task_id}/progress",
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(len(payload["items"]), 1)
+                event = payload["items"][0]
+                self.assertEqual(event["stage"], "research")
+                self.assertEqual(event["current"], 2)
+                self.assertEqual(event["total"], 5)
+                self.assertEqual(event["percent"], 40.0)
+
+                status, bad = http_json(
+                    server.server_address[1],
+                    "POST",
+                    f"/tasks/{task_id}/events",
+                    {
+                        "type": "progress",
+                        "stage": "bad",
+                        "current": 6,
+                        "total": 5,
+                    },
+                    worker["token"],
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(bad["error"]["code"], "bad_request")
+                self.assertEqual(client.task(task_id)["status"], "running")
+            finally:
+                self.close_server(store, adapter, server, thread)
+
     def test_two_workers_cannot_lease_same_task(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, store, adapter, registry, server, thread = self.make_server(tmp)

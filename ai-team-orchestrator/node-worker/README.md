@@ -89,3 +89,7 @@ npm run check
 ```
 
 No npm dependencies are required for runtime or tests.
+
+## Progress events
+
+Task handlers may call `ctx.reportProgress({ stage, message, current, total, percent })`. Progress is informational and never changes queued/acknowledged/running/completed truth.

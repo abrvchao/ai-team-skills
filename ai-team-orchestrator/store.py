@@ -129,6 +129,21 @@ class TaskStore:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(task_id) REFERENCES tasks(task_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS progress_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    current INTEGER,
+                    total INTEGER,
+                    percent REAL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(task_id) REFERENCES tasks(task_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_progress_task_event
+                ON progress_events(task_id, event_id ASC);
                 """
             )
             self._ensure_column("tasks", "worker_id", "TEXT")
@@ -536,6 +551,100 @@ class TaskStore:
                 self.conn.rollback()
                 raise
         return self.get_task(row["task_id"])
+
+    def add_progress(
+        self,
+        task_id: str,
+        *,
+        stage: str,
+        message: str = "",
+        current: int | None = None,
+        total: int | None = None,
+        percent: float | None = None,
+    ) -> dict[str, Any]:
+        self.get_task(task_id)
+        normalized_stage = str(stage or "").strip()[:120]
+        if not normalized_stage:
+            raise ValueError("progress stage is required")
+        normalized_message = str(message or "").strip()[:2000]
+
+        current_value = None if current is None else int(current)
+        total_value = None if total is None else int(total)
+        if current_value is not None and current_value < 0:
+            raise ValueError("progress current must be non-negative")
+        if total_value is not None and total_value <= 0:
+            raise ValueError("progress total must be positive")
+        if (
+            current_value is not None
+            and total_value is not None
+            and current_value > total_value
+        ):
+            raise ValueError("progress current cannot exceed total")
+
+        percent_value = None if percent is None else float(percent)
+        if percent_value is None and current_value is not None and total_value is not None:
+            percent_value = (current_value / total_value) * 100.0
+        if percent_value is not None and not (0.0 <= percent_value <= 100.0):
+            raise ValueError("progress percent must be between 0 and 100")
+
+        now = utcnow()
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO progress_events (
+                    task_id, stage, message, current, total, percent, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task_id,
+                    normalized_stage,
+                    normalized_message,
+                    current_value,
+                    total_value,
+                    percent_value,
+                    _iso(now),
+                ),
+            )
+            event_id = int(cursor.lastrowid)
+            self.conn.commit()
+        return {
+            "event_id": event_id,
+            "task_id": task_id,
+            "stage": normalized_stage,
+            "message": normalized_message,
+            "current": current_value,
+            "total": total_value,
+            "percent": percent_value,
+            "created_at": _iso(now),
+        }
+
+    def progress(self, task_id: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self.get_task(task_id)
+        bounded = max(1, min(int(limit), 1000))
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT event_id, task_id, stage, message, current, total, percent, created_at
+                FROM progress_events
+                WHERE task_id = ?
+                ORDER BY event_id ASC
+                LIMIT ?
+                """,
+                (task_id, bounded),
+            ).fetchall()
+        return [
+            {
+                "event_id": int(row["event_id"]),
+                "task_id": row["task_id"],
+                "stage": row["stage"],
+                "message": row["message"],
+                "current": row["current"],
+                "total": row["total"],
+                "percent": row["percent"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
 
     def add_artifact(
         self,

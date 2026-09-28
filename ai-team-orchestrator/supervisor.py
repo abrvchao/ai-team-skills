@@ -114,6 +114,13 @@ class BridgeClient:
         )
         return list(payload.get("items") or [])
 
+    def progress(self, task_id: str) -> list[dict[str, Any]]:
+        payload = self._request(
+            "GET",
+            f"/tasks/{urllib.parse.quote(task_id)}/progress",
+        )
+        return list(payload.get("items") or [])
+
     def cancel(self, task_id: str) -> dict[str, Any]:
         return self._request(
             "POST",

@@ -144,6 +144,25 @@ export class AgentWorker {
       });
     };
 
+    const reportProgress = async (progress) => {
+      const value = typeof progress === "string"
+        ? { stage: "working", message: progress }
+        : progress;
+      if (!value || typeof value !== "object") {
+        throw new TypeError("Progress must be a string or object");
+      }
+      const stage = String(value.stage || "").trim();
+      if (!stage) throw new TypeError("Progress stage is required");
+      return this.client.event(taskId, {
+        type: "progress",
+        stage,
+        message: String(value.message || ""),
+        current: value.current ?? null,
+        total: value.total ?? null,
+        percent: value.percent ?? null,
+      });
+    };
+
     const context = {
       task,
       signal: controller.signal,
@@ -178,6 +197,7 @@ export class AgentWorker {
         return () => subscribers.delete(handler);
       },
       addArtifact,
+      reportProgress,
       heartbeat: () => this.client.heartbeat(),
     };
 
