@@ -69,6 +69,7 @@ class MCPHTTPTransportTests(unittest.IsolatedAsyncioTestCase):
                     "list_agents",
                     "list_tasks",
                     "get_task",
+                    "get_task_progress",
                     "list_artifacts",
                     "submit_task",
                     "send_message",
