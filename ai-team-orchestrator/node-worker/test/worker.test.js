@@ -266,6 +266,39 @@ test("handler rejection reports failed exactly once", async () => {
   });
 });
 
+test("task handlers can report structured progress without changing task truth", async () => {
+  await withBridge(async (bridge) => {
+    const task = bridge.enqueue();
+    const worker = workerFor(bridge, async (ctx) => {
+      await ctx.reportProgress({
+        stage: "research",
+        message: "Checking official API coverage",
+        current: 2,
+        total: 5,
+      });
+      return {};
+    });
+
+    const result = await worker.runOnce();
+    assert.equal(result.status, "completed");
+
+    const events = bridge.events.filter(({ taskId }) => taskId === task.task_id);
+    const progress = events.find(({ event }) => event.type === "progress")?.event;
+    assert.deepEqual(progress, {
+      type: "progress",
+      stage: "research",
+      message: "Checking official API coverage",
+      current: 2,
+      total: 5,
+      percent: null,
+    });
+    assert.deepEqual(
+      events.map(({ event }) => event.type === "status" ? event.status : event.type),
+      ["running", "progress", "completed"],
+    );
+  });
+});
+
 test("returned artifacts are reported before completion", async () => {
   await withBridge(async (bridge) => {
     const task = bridge.enqueue();
