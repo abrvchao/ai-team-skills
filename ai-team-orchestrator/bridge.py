@@ -635,6 +635,23 @@ def create_handler(
 
                 raise ValueError("worker may not set this task status directly")
 
+            if event_type == "progress":
+                if current.status not in {
+                    TaskStatus.ACKNOWLEDGED,
+                    TaskStatus.RUNNING,
+                    TaskStatus.BLOCKED,
+                }:
+                    raise ValueError("task cannot accept progress in current state")
+                store.add_progress(
+                    current.task_id,
+                    stage=str(event.get("stage") or ""),
+                    message=str(event.get("message") or ""),
+                    current=event.get("current"),
+                    total=event.get("total"),
+                    percent=event.get("percent"),
+                )
+                return store.get_task(current.task_id)
+
             if event_type == "artifact":
                 if current.status not in {
                     TaskStatus.ACKNOWLEDGED,
@@ -728,6 +745,12 @@ def create_handler(
                         self._json(
                             200,
                             {"items": [item.to_dict() for item in store.artifacts(task_id)]},
+                        )
+                        return
+                    if len(parts) == 2 and parts[1] == "progress":
+                        self._json(
+                            200,
+                            {"items": store.progress(task_id)},
                         )
                         return
                     if len(parts) == 2 and parts[1] == "messages":
