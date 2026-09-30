@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from core import (
     AcquisitionMethod,
@@ -21,7 +23,7 @@ from core import (
 )
 from features import acceleration, delta, summarize_signals, velocity
 from opportunity import score_opportunity
-from pipeline import dedupe_news, historical_momentum_signals
+from pipeline import GDELTProvider, _gdelt_query, dedupe_news, historical_momentum_signals
 from web import parse_sitemap_index
 
 
@@ -69,6 +71,26 @@ class FlakyProvider(DataProvider):
 
 
 class Phase1Tests(unittest.TestCase):
+    def test_gdelt_429_is_reported_as_rate_limited(self):
+        error = urllib.error.HTTPError(
+            "https://api.gdeltproject.org/api/v2/doc/doc",
+            429,
+            "Too Many Requests",
+            hdrs=None,
+            fp=None,
+        )
+        with patch("pipeline._json_request", side_effect=error):
+            result = GDELTProvider().collect(
+                CollectionRequest(topic="AI agents", limit=5)
+            )
+        self.assertEqual(result.status, ProviderState.RATE_LIMITED)
+        self.assertEqual(result.warnings, ["GDELT HTTP 429: Too Many Requests"])
+
+    def test_gdelt_query_drops_api_rejected_short_ascii_terms(self):
+        self.assertEqual(_gdelt_query("AI agents"), "agents")
+        self.assertEqual(_gdelt_query("AI"), "news")
+        self.assertEqual(_gdelt_query("人工智能"), "人工智能")
+
     def test_snapshot_store_is_append_only_and_persistent(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "snapshots.jsonl"

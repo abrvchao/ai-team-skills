@@ -20,6 +20,7 @@ from core import (
     Provenance,
     RawEvent,
 )
+from radar import _workspace_path
 from read_model import OpportunityReadStore
 from workspace import (
     WorkspaceStore,
@@ -109,6 +110,16 @@ def opportunity_report(workspace_id: str | None, topic: str, evidence_id: str) -
 
 
 class WorkspaceTests(unittest.TestCase):
+    def test_radar_artifacts_are_namespaced_by_workspace(self):
+        self.assertEqual(
+            _workspace_path(".radar/snapshots.jsonl", None),
+            ".radar/snapshots.jsonl",
+        )
+        self.assertEqual(
+            _workspace_path(".radar/snapshots.jsonl", "ws_abc"),
+            ".radar/ws_abc/snapshots.jsonl",
+        )
+
     def test_public_domain_normalization_and_rejection(self):
         self.assertEqual(
             normalize_site_url("HTTPS://Example.COM:443/blog?q=x", required=True),

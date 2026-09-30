@@ -56,6 +56,19 @@ from web import WebsiteProvider, fetch_text, parse_feed
 USER_AGENT = "ContentOpportunityRadar/0.1 (+https://github.com/abrvchao/ai-team-skills)"
 
 
+def _gdelt_query(topic: str) -> str:
+    """Remove short ASCII terms rejected by GDELT's DOC API."""
+    terms = []
+    for raw in str(topic or "").split():
+        term = raw.strip('"')
+        ascii_letters = re.sub(r"[^A-Za-z0-9]", "", term)
+        if ascii_letters and len(ascii_letters) < 3 and term.isascii():
+            continue
+        if term:
+            terms.append(term)
+    return " ".join(terms) or "news"
+
+
 def _json_request(
     url: str,
     *,
@@ -392,7 +405,7 @@ class GDELTProvider(DataProvider):
 
     def collect(self, request: CollectionRequest) -> CollectionResult:
         params = urllib.parse.urlencode({
-            "query": request.topic,
+            "query": _gdelt_query(request.topic),
             "mode": "artlist",
             "format": "json",
             "maxrecords": min(max(request.limit, 1), 75),
@@ -402,6 +415,13 @@ class GDELTProvider(DataProvider):
         url = "https://api.gdeltproject.org/api/v2/doc/doc?" + params
         try:
             data, _ = _json_request(url, timeout=25.0)
+        except urllib.error.HTTPError as exc:
+            state = ProviderState.RATE_LIMITED if exc.code in {403, 429} else ProviderState.FAILED
+            return CollectionResult(
+                self.id,
+                state,
+                warnings=[f"GDELT HTTP {exc.code}: {exc.reason}"],
+            )
         except Exception as exc:
             return CollectionResult(
                 self.id,
