@@ -236,12 +236,16 @@
     if (!view || !view.workers.length) {root.append(el("div","empty",T("noWorkers")));return;}
     for (const worker of view.workers) {
       const card = el("article","panel worker-card");
+      // A cached worker record must never be presented as currently online.
+      const live = !state.monitorError && state.monitor && state.monitor.bridge_available === true;
+      const verifiedOnline = live && worker.online;
       const title = el("div","worker-title");
       title.append(el("strong","",worker.id),
-        el("span","tag "+(worker.online?"done":"failed"),worker.online?T("online"):T("offline")));
+        el("span","tag "+(verifiedOnline?"done":"failed"),
+          !live?T("stale"):verifiedOnline?T("online"):T("offline")));
       card.append(title);
-      const load = worker.busy?T("busy"):worker.online?T("idle"):T("offline");
-      const count = worker.activeCount===null?T("notKnown"):String(worker.activeCount);
+      const load = !live?T("stale"):worker.busy?T("busy"):verifiedOnline?T("idle"):T("offline");
+      const count = !live||worker.activeCount===null?T("notKnown"):String(worker.activeCount);
       card.append(el("div","mini",load+" · "+T("tasks")+": "+count));
       const tasks = el("div","worker-tasks");
       if (!worker.tasks.length) tasks.append(el("p","mini",T("noMore")));
