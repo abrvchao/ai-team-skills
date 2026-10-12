@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark">
+<title>AI Team · Control Center v2</title>
+<link rel="stylesheet" href="styles.css">
+<script src="data.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="shell top-row">
+    <div class="brand"><div class="brandmark" aria-hidden="true">AI</div>
+      <div><strong>AI TEAM</strong><small data-i18n="brandSub">协作总控 · Control Center v2</small></div>
+    </div>
+    <nav class="nav" aria-label="Dashboard controls">
+      <a href="/" data-i18n="classic">经典面板</a>
+      <label for="lang" class="mini" data-i18n="language">语言</label>
+      <select id="lang" class="control" aria-label="Language">
+        <option value="zh">中文</option><option value="en">English</option>
+        <option value="ja">日本語</option><option value="ko">한국어</option>
+      </select>
+      <button class="control" id="refresh" type="button" data-i18n="refresh">立即刷新</button>
+    </nav>
+  </div>
+</header>
+<main class="shell">
+  <section class="intro" aria-labelledby="page-title">
+    <div><h1 id="page-title" data-i18n="heading">项目运行总览</h1>
+      <p class="muted" data-i18n="intro">项目进度、子任务、Worker 执行和数据源接入，均基于真实接口。</p>
+    </div>
+    <div class="mini" id="updated" aria-live="polite">尚未获取数据</div>
+  </section>
+  <div role="status" aria-live="polite" id="connectivity" class="banner warn">
+    <span class="dot warn" aria-hidden="true"></span><span id="connectivity-text">正在连接...</span>
+  </div>
+  <section aria-label="Key status metrics" class="kpis" id="stats"></section>
+  <section class="section" aria-labelledby="projects-title">
+    <div class="section-head"><h2 id="projects-title" data-i18n="projects">项目与子任务进度</h2>
+      <div class="segment" role="group" aria-label="Project status filter" id="filters">
+        <button type="button" data-filter="all" aria-pressed="true" data-i18n="all">全部</button>
+        <button type="button" data-filter="running" aria-pressed="false" data-i18n="running">执行中</button>
+        <button type="button" data-filter="failed" aria-pressed="false" data-i18n="blocked">阻塞/失败</button>
+        <button type="button" data-filter="done" aria-pressed="false" data-i18n="done">已完成</button>
+      </div>
+    </div>
+    <p class="mini" data-i18n="progressNotice">项目百分比为 Supervisor 流程进度；子任务百分比只来自 Worker 上报。缺失进度绝不视为 0% 或完成。</p>
+    <div id="projects" class="list" aria-live="polite"></div>
+  </section>
+  <section class="section" aria-labelledby="workers-title">
+    <div class="section-head"><h2 id="workers-title" data-i18n="workers">Worker 工作负载</h2>
+      <span id="worker-sample" class="mini"></span></div>
+    <div id="workers" class="grid"></div>
+  </section>
+  <section class="section" aria-labelledby="sources-title">
+    <div class="section-head"><h2 id="sources-title" data-i18n="sources">数据源接入计划</h2></div>
+    <p class="mini" data-i18n="sourcesNotice">路线图的“已排期”不等于 Bridge 已派工，更不等于真实平台采集成功。</p>
+    <div id="sources" class="panel panel-body"></div>
+  </section>
+  <footer class="footer"><span data-i18n="footer">只读 Dashboard v2 · 如 Bridge 不可用，保留最后数据并显著标记为历史快照。</span></footer>
+</main>
+<noscript>需要启用 JavaScript 才能显示 Dashboard。</noscript>
+</body></html>

@@ -42,6 +42,14 @@ jobs:
       - name: Unit + subprocess integration tests
         run: python -m unittest discover -v
 
+      - name: Dashboard v2 JavaScript syntax
+        run: |
+          node --check dashboard-next/data.js
+          node --check dashboard-next/app.js
+
+      - name: Dashboard v2 offline data tests
+        run: node --test dashboard-next/test_data.js
+
       - name: Node worker syntax
         run: |
           cd node-worker
