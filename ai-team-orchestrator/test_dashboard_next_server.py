@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import socket
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -66,7 +67,7 @@ class DashboardV2ServerTests(unittest.TestCase):
     def test_static_index_and_js_are_served(self) -> None:
         status, data = self.read("/")
         self.assertEqual(status, 200)
-        self.assertIn(b"dashboard-next", data)
+        self.assertIn(b"AI TEAM", data)
         for name in ("data.js", "app.js", "styles.css"):
             status, body = self.read("/" + name)
             self.assertEqual(status, 200)
@@ -101,15 +102,25 @@ class DashboardV2ServerTests(unittest.TestCase):
                 server_module.make_server(0, target)
 
     def test_missing_upstream_returns_explicit_502_not_fake_status(self) -> None:
-        self.stub.shutdown()
+        # 选一个暂未使用的端口，不停止其他测试共用的 Stub 服务。
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            unavailable_port = sock.getsockname()[1]
+        isolated = server_module.make_server(
+            0, f"http://127.0.0.1:{unavailable_port}",
+        )
+        thread = threading.Thread(target=isolated.serve_forever, daemon=True)
+        thread.start()
         try:
             with self.assertRaises(HTTPError) as caught:
-                self.read("/api/monitor")
+                urlopen(f"http://127.0.0.1:{isolated.server_port}/api/monitor", timeout=4)
             self.assertEqual(caught.exception.code, 502)
             self.assertEqual(json.loads(caught.exception.read())["error"], "upstream_unavailable")
         finally:
-            # Teardown will safely call shutdown() again.
-            pass
+            isolated.shutdown()
+            isolated.server_close()
+            thread.join(timeout=2)
+
 
 
 if __name__ == "__main__":
