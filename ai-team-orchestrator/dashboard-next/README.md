@@ -23,15 +23,29 @@
 cd ai-team-orchestrator
 node --test dashboard-next/test_data.js
 node --check dashboard-next/app.js
-python -m unittest -v test_dashboard_next
+python -m unittest -v test_dashboard_next test_dashboard_next_server
 ```
 
 用 GitHub Actions 运行再判断是否通过。**这些测试不证明 Mac 实际部署成功，也不证明 Bridge 真实响应。**
 
+## 独立运行方式（Mac 恢复后才可执行部署）
+
+无需更改或重启旧版 `project_dashboard.py`。新版独立监听回环地址 `127.0.0.1:8772`，仅读取旧版 `127.0.0.1:8770` 的 `/api/monitor`、`/api/status`：
+
+```bash
+cd ai-team-orchestrator
+python dashboard-next/server.py --port 8772 --upstream http://127.0.0.1:8770
+# 浏览器打开 http://127.0.0.1:8772/
+```
+
+服务只绑定本机回环地址，仅开放固定静态资源、`/health` 以及两个只读代理接口；拒绝 POST/PUT/DELETE 与路径遍历。上游失效时代理返回 502，前端将旧数据显示为历史快照，不会误判 Worker 在线。
+
+**以上是安装说明，并不表示该端口当前已经部署/能访问。**
+
 ## Mac Tunnel 恢复后的集成步骤（不能自动假定成功）
 
 1. 通过 WebCodex 只读检查 Mac 的 `project_dashboard.py`、`team_monitor.py`、`/api/status`、`/api/monitor` 返回字段。检查是否已有 P0 社交数据源任务，避免重复派工。
-2. 仅把 `dashboard-next/` 以**新的同源路径**（建议 `http://127.0.0.1:8770/v2/`）添加为独立只读页面，保留经典首页 `/` 和全部旧路由。
+2. 优先采用独立 `server.py` 在 `127.0.0.1:8772` 启动，不覆盖经典 `127.0.0.1:8770`；如果后续决定整合为旧服务同源路由，需独立做兼容审查。
 3. 本机运行 Python + JS 专项和全量回归，浏览器实测多语言、离线/过期状态、Worker 任务展开、数据源计划来源。未部署前不要向用户发布 `/v2/` 作为有效入口。
 4. 稳定后再评估将 v2 作为默认首页。必须可快速回退，不开放未授权的公网访问。
 
