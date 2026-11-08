@@ -1,0 +1,7 @@
+interface:
+  display_name: "WeChat Official Account Publisher"
+  short_description: "Research, review, and prepare WeChat account drafts"
+  default_prompt: "Use $wechat-official-account-publisher to research a topic and prepare a reviewed WeChat draft."
+
+policy:
+  allow_implicit_invocation: true

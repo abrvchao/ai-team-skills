@@ -1,0 +1,12 @@
+{
+  "run_id": "run_fixture_active",
+  "goal": "Build Daily Delivery Brief: a local read-only CLI that emits one concise execution brief.",
+  "status": "implementation_running",
+  "primary": {
+    "dsh": {"status": "completed", "artifact": "primary/dsh/primary.md"}
+  },
+  "implementation": {
+    "status": "running",
+    "artifact_relative": "implementation/implementation_report.md"
+  }
+}

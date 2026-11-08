@@ -1,0 +1,66 @@
+# Local credentials and secrets（本地凭据与密钥）
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Python caches and virtual environments（Python 缓存与虚拟环境）
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Node dependencies（Node 依赖目录）
+node_modules/
+
+# macOS metadata（macOS 元数据）
+.DS_Store
+
+# AI Team local execution state（AI Team 本地执行状态）
+/.ai-team-worker/
+/.browser-worker-smoke/
+/.china-social-m2/
+/.dashboard-smoke/
+**/.ai-team-worker/
+**/.browser-worker-smoke/
+**/.china-social-m2/
+**/.dashboard-smoke/
+**/.android-e2e-smoke/
+**/.ai-team-runs/
+**/.orchestrator/
+**/.radar/
+**/chrome-profile/
+
+# Local databases and logs（本地数据库与日志）
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Unreviewed external skill copies（尚未完成许可审查的外部技能副本）
+/external/
+/ponytail/
+/ponytail-audit/
+/ponytail-debt/
+/ponytail-review/
+/third_party/ponytail/
+/wechat-official-account-publisher/client-projects/
+/content-opportunity-radar/artifacts/ui-review/
+/.backup-worktree/
+
+# Personal operational notes kept local（仅保留在本机的个人运行记录）
+/ai-team-orchestrator/GROK_BILLING_INCIDENT_*.md
+/ai-team-orchestrator/WORKBUDDY_HANDOFF_RESULT.md
+/ai-team-orchestrator/WORKBUDDY_INTEGRATION_TEST.md
+/ai-team-orchestrator/docs/agent-collab/chatgpt-to-muse.md
+/ai-team-orchestrator/docs/GEMINI_PRO_OAUTH_RESTORE_*.md

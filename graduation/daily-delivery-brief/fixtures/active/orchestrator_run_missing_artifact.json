@@ -1,0 +1,9 @@
+{
+  "run_id": "run_fixture_blocked",
+  "goal": "Deliver the blocked fixture product.",
+  "status": "blocked",
+  "primary": {
+    "dsh": {"status": "completed", "artifact": "primary/dsh/primary.md"},
+    "qwen": {"status": "failed", "artifact": "primary/qwen/primary.md"}
+  }
+}

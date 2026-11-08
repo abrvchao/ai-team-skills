@@ -1,0 +1,40 @@
+services:
+  radar-web:
+    build:
+      context: .
+    image: content-opportunity-radar:local
+    restart: unless-stopped
+    ports:
+      - "${RADAR_PORT:-8787}:8787"
+    volumes:
+      - radar-data:/data
+    environment:
+      PYTHONUNBUFFERED: "1"
+    security_opt:
+      - no-new-privileges:true
+
+  radar-worker:
+    build:
+      context: .
+    image: content-opportunity-radar:local
+    restart: unless-stopped
+    volumes:
+      - radar-data:/data
+    environment:
+      PYTHONUNBUFFERED: "1"
+      RADAR_SCOPE: "${RADAR_SCOPE:-AI}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GSC_ACCESS_TOKEN: "${GSC_ACCESS_TOKEN:-}"
+      GOOGLE_ADS_ACCESS_TOKEN: "${GOOGLE_ADS_ACCESS_TOKEN:-}"
+    command:
+      - sh
+      - -ec
+      - |
+        python bootstrap.py prepare --db /data/radar.db
+        python bootstrap.py init --scope "$${RADAR_SCOPE}" --config /data/collection-plan.json --db /data/radar.db
+        exec python collector.py loop --config /data/collection-plan.json --poll-seconds 30
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  radar-data:

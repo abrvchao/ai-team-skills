@@ -1,0 +1,49 @@
+{
+  "schema_version": "radar-extensions-v1",
+  "product_mode": "lite-first",
+  "policy": "Deferred capabilities are preserved and restartable. Restart only when Lite usage exposes a concrete need.",
+  "extensions": [
+    {
+      "id": "gsc-first-party",
+      "name": "GSC first-party（GSC 第一方）",
+      "status": "deferred_restartable",
+      "restart_when": "A real owned/authorized GSC property is available and first-party demand evidence would change a decision."
+    },
+    {
+      "id": "native-vs-aihot",
+      "name": "Native vs AIHOT（原生 vs AIHOT）",
+      "status": "deferred_restartable",
+      "restart_when": "Lite shows a repeated discovery-coverage gap that more seed sources may resolve."
+    },
+    {
+      "id": "china-social",
+      "name": "China-social providers（中国社交数据源）",
+      "status": "deferred_restartable",
+      "restart_when": "Real Chinese-content usage exposes a repeatable opportunity blind spot in current native sources."
+    },
+    {
+      "id": "more-providers",
+      "name": "More providers（更多数据源）",
+      "status": "deferred_restartable",
+      "restart_when": "A measurable discovery blind spot persists across real Lite runs."
+    },
+    {
+      "id": "paid-demand",
+      "name": "Google Ads / paid demand（付费需求数据）",
+      "status": "deferred_restartable",
+      "restart_when": "Commercial demand evidence is required to decide whether an opportunity is worth pursuing."
+    },
+    {
+      "id": "complex-dashboard",
+      "name": "Complex Dashboard（复杂面板）",
+      "status": "deferred_restartable",
+      "restart_when": "The Lite CLI/current dashboard becomes a proven usability bottleneck."
+    },
+    {
+      "id": "new-scoring-dimensions",
+      "name": "New scoring dimensions（新评分维度）",
+      "status": "deferred_restartable",
+      "restart_when": "A real ranking error can be traced to a missing scoring dimension."
+    }
+  ]
+}

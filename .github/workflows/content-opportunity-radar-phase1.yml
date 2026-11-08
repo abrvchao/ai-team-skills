@@ -1,0 +1,33 @@
+name: Content Opportunity Radar Tests
+
+on:
+  push:
+    branches:
+      - main
+      - "dsh/**"
+      - "feat/**"
+      - "fix/**"
+      - "docs/**"
+      - "feature/**"
+  pull_request:
+    paths:
+      - "content-opportunity-radar/**"
+      - ".github/workflows/content-opportunity-radar-phase1.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: content-opportunity-radar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Dashboard JS syntax
+        run: node --check dashboard/app.js
+      - name: Unit tests
+        run: python -m unittest discover -v -p "test_*.py"

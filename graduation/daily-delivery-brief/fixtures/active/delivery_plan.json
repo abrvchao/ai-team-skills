@@ -1,0 +1,10 @@
+{
+  "version": "delivery-plan-v0.1",
+  "goal": "Build Daily Delivery Brief: a local read-only CLI that emits one concise execution brief.",
+  "participants": [
+    {"worker_id": "dsh", "role_id": "engineering_verifier", "role_label": "Engineering Verifier"},
+    {"worker_id": "qwen", "role_id": "implementation_architect", "role_label": "Implementation Architect"}
+  ],
+  "project_due_at": "2026-10-06T06:04:31.940163+00:00",
+  "truth_rule": "execution schedule, not a completion guarantee"
+}

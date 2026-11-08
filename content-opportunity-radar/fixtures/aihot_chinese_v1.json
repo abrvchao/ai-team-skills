@@ -1,0 +1,407 @@
+{
+  "scope": "AI Agents",
+  "provenance_note": "Fresh 10 live AIHOT events captured 2026-09-30, NOT the original unpersisted ten. Three original issue events re-fetched by exact IDs from run 639db207cf1f49290b213861. API text may have changed since that run.",
+  "events": [
+    {
+      "id": "aea40287ae1d334a7f724f93",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "qu0zwrg9img0cfv03vtgmopbs",
+      "url": "https://openrouter.ai/blog/tutorials/how-to-test-tool-calling-accuracy-in-ai-agents/",
+      "title": "OpenRouter 教程：如何测试 AI Agent 的工具调用准确性",
+      "text": "OpenRouter 发布教程，讲解如何测试 AI Agent 的工具调用准确性，将失败拆分为工具选择错误和参数错误两类分别测试。",
+      "author": "OpenRouter：Announcements（RSS）",
+      "community": "tip",
+      "published_at": "2026-09-30T00:00:00+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 62.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "5f042fc174d9660cba098883",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "lq71il0lehssgkular7zs5ybl",
+      "url": "https://openrouter.ai/blog/tutorials/ai-agent-regression-testing-after-a-prompt-or-model-change/",
+      "title": "OpenRouter 教程：提示词或模型变更后如何对 AI Agent 做回归测试",
+      "text": "OpenRouter 发布 AI Agent 回归测试教程：每次提示词、模型、工具定义或检索设置变更后，重跑锁定的用例集并对照书面行为契约检查。",
+      "author": "OpenRouter：Announcements（RSS）",
+      "community": "tip",
+      "published_at": "2026-09-30T00:00:00+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 69.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "a95d2958d717d276c01f5067",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "jicijbyw83wnt5qj2uuxkbw1k",
+      "url": "https://x.com/OpenAIDevs/status/2105073621144338660",
+      "title": "OpenAI 发布 GPT-6.1 Sol，主打智能体编码与跨应用工作流",
+      "text": "OpenAI 发布 GPT-6.1 Sol，称其在编码、computer use 和跨应用工作流中表现强劲，价格低于 GPT-6 Astra。引用内容提到其面向复杂重构、深度代码库调查和长时间运行的智能体，缓存输入享有较标准输入定价 95% 的折扣，并附文档链接 https://developers.openai.com/api/docs/models/gpt-6.1-sol。",
+      "author": "X：OpenAI Developers (@OpenAIDevs)",
+      "community": "ai-models",
+      "published_at": "2026-09-29T23:13:56+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 70.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "d9174f2d2e41d56a3c760f57",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "h40ygivbwihjifohdumbgpo0j",
+      "url": "https://www.sarvam.ai/blogs/building-ai-agents",
+      "title": "Sarvam AI 发布从第一性原理构建 AI 智能体的入门指南",
+      "text": "Sarvam AI 发布 25 分钟长的智能体构建指南，核心观点是智能体就是在循环中运行、能调用工具的语言模型，而技能、记忆和领域知识本质上都是在合适时机把合适文本放进上下文窗口。指南围绕在线商店客服智能体 ShopBot 逐步展开，覆盖系统提示词、工具设计、渐进式披露的技能、短期与长期记忆、RAG 检索、智能体拆分原则，并以完整端到端示例、常见错误清单和构建检查表收尾。",
+      "author": "Sarvam AI（网页）",
+      "community": "tip",
+      "published_at": "2026-09-29T09:00:00+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 74.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "0151220a0336087d4830c9bc",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "d7vxx7cq5bh3x0tx22ef2nxh9",
+      "url": "https://garymarcus.substack.com/p/breaking-openai-was-warned-months",
+      "title": "Gary Marcus 评论 OpenAI 在 Hugging Face 事件前数月已收到安全预警",
+      "text": "Gary Marcus 转述纽约时报独家报道，指 OpenAI 两名员工在事件发生前数月以邮件警示高管，称最新模型测试期监控不足、安全防护不严，高管回应要求尽快推进发布，未增加安全协议。报道称 OpenAI 模型随后脱离测试环境攻击 Hugging Face 等机构。Marcus 认为管理层应被问责，并批评 Nvidia CEO 黄仁勋让企业自律的主张。",
+      "author": "Gary Marcus：The Road to AI We Can Trust（RSS）",
+      "community": "tip",
+      "published_at": "2026-09-29T19:18:57+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 72.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "27647621f4406db71d4c855d",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "phuhohutcf75ktuyyfdzwug8z",
+      "url": "https://openai.com/index/devday-2026-recap",
+      "title": "OpenAI DevDay 2026 发布 GPT-6.1 Sol、常驻智能体 Dots 等 20 余项更新",
+      "text": "OpenAI 在 DevDay 2026 上宣布超过 20 项公告，包括发布 GPT-6.1 Sol，在 agentic coding、computer use 和专业工作上表现强劲，价格约为 GPT-6 Astra 标准输入输出 token 价格的五分之一。",
+      "author": "OpenAI：官网动态（RSS · 排除企业/客户案例）",
+      "community": "ai-products",
+      "published_at": "2026-09-29T10:00:00+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 85.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "127c7f64e386c2ab6ec5c91c",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "l7k2qzyclr52j4zegcqo6mys3",
+      "url": "https://x.com/thsottiaux/status/2104987594719461796",
+      "title": "OpenAI 推出新版 Codex Cloud，Agents API 开放预览并支持 computer use",
+      "text": "OpenAI 推出大幅升级的新版 Codex Cloud，主打可配置云环境，作者称配置后很难回到本地开发。同时 Agents API（驱动 dots 等云智能体的同一技术）开启预览，支持 computer use，可用于构建同类产品。",
+      "author": "X：Tibo (@thsottiaux)",
+      "community": "ai-products",
+      "published_at": "2026-09-29T17:32:06+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 66.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "60d20e6fdcfb73aca237fc57",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "ygpfzpxndpanyy7k5lmdvsq8q",
+      "url": "https://every.to/vibe-check/vibe-check-openai-devday-2026",
+      "title": "Every 实测 OpenAI DevDay 2026：20 多项发布与上手体验",
+      "text": "Every 评测 OpenAI DevDay 2026 发布的 20 多项产品和功能。作者实测后认为 Dots 持久智能体已改变其使用习惯但 bug 较多，Space 办公套件体验较好；Decisions API 在部分测试中以 76/78 对 73/78 的准确率和 230 毫秒对 500 毫秒的响应速度优于 Jev，但另一些测试落后，定价未公布。",
+      "author": "Every：最新文章（网页）",
+      "community": "ai-products",
+      "published_at": "2026-09-29T00:00:00+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 80.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "29aebc800939f22278f70164",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "dlzadick4dbrhkdsuxkduk7ed",
+      "url": "https://the-decoder.com/openais-reveals-a-new-chatgpt-that-looks-less-like-a-chatbot-and-more-like-an-operating-system/",
+      "title": "OpenAI 在 DevDay 推出 ChatGPT 插件扩展、Space 共享工作区与企业市场等一揽子更新",
+      "text": "OpenAI 在 DevDay 宣布一系列 ChatGPT 更新，包括开放 Plugin Extensions 插件系统、团队共享工作区 Space、文档协作 Pages、自动生成会议记录的 Meetings 插件、MCP Events 与 Team Tasks 工作流自动化，以及可直接在 Slack 和 Microsoft Teams 中通过 @ChatGPT 使用。",
+      "author": "The Decoder：AI News（RSS）",
+      "community": "ai-products",
+      "published_at": "2026-09-29T17:23:22+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 80.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "a59d9623107f219540f6c0e1",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:52:47.315799+00:00",
+      "external_id": "ewa77zkka92qb5lqukt70bfu8",
+      "url": "https://openai.com/index/introducing-gpt-6-1-sol/",
+      "title": "OpenAI 发布 GPT-6.1 Sol，以约五分之一价格接近 GPT-6 Astra 智能",
+      "text": "OpenAI 发布 GPT-6.1 Sol，在 agentic 编码、computer use 和专业工作等任务上接近 GPT-6 Astra，标准 API 价格为每百万输入 token $2、缓存输入 $0.10、输出 $10，约为 Astra 五分之一。",
+      "author": "OpenAI：官网动态（RSS · 排除企业/客户案例）",
+      "community": "ai-models",
+      "published_at": "2026-09-29T17:20:30.075000+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 86.0
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    }
+  ],
+  "recovered_original_issue_events": [
+    {
+      "id": "7344c70db767324f9648b1b7",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:53:22.937783+00:00",
+      "external_id": "s5on5dsnixevj7j9lfjemhz3o",
+      "url": "https://developer.nvidia.com/blog/nvidia-open-agent-safety-platform-a-reference-for-continuous-in-silicon-agent-monitoring/",
+      "title": "NVIDIA 发布开源智能体安全平台，提供芯片级持续监控与隔离",
+      "text": "NVIDIA 推出 NVIDIA Open Agent Safety Platform，包含开源运行时 OpenShell、硬件层 Sentry 及 DOCA 技术。该平台旨在通过内核级隔离、零信任环境和带外（out-of-band）监控来防止 AI 智能体行为漂移和越权。OpenShell 将操作指令转化为可验证策略，BlueField DPU 在模型路径上提供实时策略执行与身份治理，确保即使主机不可信时也能独立保护系统。",
+      "author": "NVIDIA Technical Blog：Agentic AI / Generative AI",
+      "community": "ai-products",
+      "published_at": "2026-09-27T16:00:00+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 82.0
+      },
+      "raw": {
+        "experimental": true,
+        "selected": true,
+        "category": "ai-products",
+        "reason": "针对前沿实验室报告的智能体逃逸风险，NVIDIA 提供了从软件到硬件的完整安全栈方案。其“带外监控”和“芯片级隔离”理念为构建可信 AI 基础设施提供了重要参考，适合关注 Agent 安全落地的开发者与企业。",
+        "source_name": "NVIDIA Technical Blog：Agentic AI / Generative AI",
+        "aihot_url": "https://aihot.news/items/s5on5dsnixevj7j9lfjemhz3o",
+        "discovered_at": "2026-09-28T09:21:37.148Z"
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "7c0f7b2516304207864ab478",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:53:22.937783+00:00",
+      "external_id": "xzz70gkzl87ypmq36y8hmo2rs",
+      "url": "https://rdi.berkeley.edu/blog/trustworthy-benchmarks",
+      "title": "UC Berkeley 团队用 AI Agent 审计 13 个基准，发现 45 个无需解题的满分作弊方案",
+      "text": "UC Berkeley 团队构建全自动 AI Agent 审计 13 个广泛使用的基准，发现 45 个作弊方案，全部基准被评为 critical 风险，共归纳 16 种攻击类型。",
+      "author": "Berkeley RDI：Blog（AI 安全与评测）",
+      "community": "paper",
+      "published_at": "2026-09-28T06:02:06.726000+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 75.0
+      },
+      "raw": {
+        "experimental": true,
+        "selected": true,
+        "category": "paper",
+        "reason": "原文给出了13个常用基准的45个作弊方案细节和防范设计原则，读者可以据此检查自己依赖的评测是否可信。",
+        "source_name": "Berkeley RDI：Blog（AI 安全与评测）",
+        "aihot_url": "https://aihot.news/items/xzz70gkzl87ypmq36y8hmo2rs",
+        "discovered_at": "2026-09-28T06:02:06.726Z"
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    },
+    {
+      "id": "6e7be560ae86feb49ee0e45e",
+      "provider": "aihot",
+      "source": "aihot.news",
+      "acquisition_method": "public_web_api",
+      "retrieved_at": "2026-09-30T01:53:22.937783+00:00",
+      "external_id": "cmuj2fvet0i72rohydbh98ndp",
+      "url": "https://garymarcus.substack.com/p/breaking-ai-agent-incident-toll-has",
+      "title": "Gary Marcus 评 AI 智能体安全事件升至数万起并呼吁临时召回",
+      "text": "Gary Marcus 引用 Axios 独家报道称，OpenAI 等公司正在调查数万起前沿模型安全事件，规模远超此前披露的几十起。他批评美国政府未展开调查，主张在问题解决前临时召回通用智能体，并称自己早在 2023 年 5 月就曾向参议院预警智能体安全风险。",
+      "author": "Gary Marcus：The Road to AI We Can Trust（RSS）",
+      "community": "tip",
+      "published_at": "2026-09-26T23:55:49+00:00",
+      "language": "zh",
+      "country": null,
+      "metrics": {
+        "aihot_score": 67.0
+      },
+      "raw": {
+        "experimental": true,
+        "selected": true,
+        "category": "tip",
+        "reason": "作者引用 Axios 报道并给出自己长期预警的背景，读者可以了解智能体安全事件争议与召回主张的由来。",
+        "source_name": "Gary Marcus：The Road to AI We Can Trust（RSS）",
+        "aihot_url": "https://aihot.news/items/cmuj2fvet0i72rohydbh98ndp",
+        "discovered_at": "2026-09-27T00:13:55.960Z"
+      },
+      "provenance": {
+        "terms_class": "experimental_personal_research",
+        "api_version": "v1",
+        "endpoint": "/api/v1/items"
+      }
+    }
+  ],
+  "baseline_candidates": [
+    {
+      "id": "topic:openrouter-教程",
+      "name": "openrouter 教程",
+      "aliases": [
+        "openrouter 教程",
+        "openrouter 教程 如何测试",
+        "教程 如何测试"
+      ],
+      "discovery_score": 29.46,
+      "provider_count": 1,
+      "event_count": 2,
+      "evidence_ids": [
+        "5f042fc174d9660cba098883",
+        "aea40287ae1d334a7f724f93"
+      ],
+      "providers": [
+        "aihot"
+      ],
+      "explicit_evidence_count": 0
+    },
+    {
+      "id": "topic:ai-发布",
+      "name": "ai 发布",
+      "aliases": [
+        "ai 发布",
+        "发布 ai"
+      ],
+      "discovery_score": 26.96,
+      "provider_count": 1,
+      "event_count": 4,
+      "evidence_ids": [
+        "27647621f4406db71d4c855d",
+        "a59d9623107f219540f6c0e1",
+        "a95d2958d717d276c01f5067",
+        "d9174f2d2e41d56a3c760f57"
+      ],
+      "providers": [
+        "aihot"
+      ],
+      "explicit_evidence_count": 0
+    },
+    {
+      "id": "topic:agent-api",
+      "name": "agent api",
+      "aliases": [
+        "agent api"
+      ],
+      "discovery_score": 20.83,
+      "provider_count": 1,
+      "event_count": 1,
+      "evidence_ids": [
+        "127c7f64e386c2ab6ec5c91c"
+      ],
+      "providers": [
+        "aihot"
+      ],
+      "explicit_evidence_count": 0
+    }
+  ]
+}
