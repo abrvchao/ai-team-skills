@@ -1,0 +1,9 @@
+{
+  "version": "delivery-plan-v0.1",
+  "goal": "Ship the blocked fixture product.",
+  "participants": [
+    {"worker_id": "dsh", "role_id": "engineering_verifier", "role_label": "Engineering Verifier"},
+    {"worker_id": "grok", "role_id": "trend_scout_red_team", "role_label": "Trend Scout & Red Team"}
+  ],
+  "project_due_at": "2026-10-06T06:04:31.940163+00:00"
+}

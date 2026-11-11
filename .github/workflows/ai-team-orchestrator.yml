@@ -1,0 +1,89 @@
+name: AI Team Orchestrator
+
+on:
+  push:
+    paths:
+      - "ai-team-orchestrator/**"
+      - ".github/workflows/ai-team-orchestrator.yml"
+  pull_request:
+    paths:
+      - "ai-team-orchestrator/**"
+      - ".github/workflows/ai-team-orchestrator.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-team-orchestrator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 中文说明：所有 Node Worker 使用同一受控 Node 版本，避免 Runner 默认版本漂移。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            ai-team-orchestrator/node-worker/package-lock.json
+            ai-team-orchestrator/*-node-worker/package-lock.json
+
+      - name: Install MCP SDK
+        run: python -m pip install -r requirements-mcp.lock.txt
+
+      - name: Compile
+        run: python -m compileall -q .
+
+      - name: Validate protocol schemas
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in sorted(Path("schemas").glob("*.json")):
+              json.loads(path.read_text(encoding="utf-8"))
+              print(path)
+          PY
+
+      - name: Unit + subprocess integration tests
+        run: python -m unittest discover -v
+
+      - name: Validate task/artifact truth
+        run: python check_task_truth.py
+
+      - name: Verify dependency lockfiles（验证依赖锁文件）
+        run: |
+          set -eu
+          test -f requirements-mcp.lock.txt
+          for d in node-worker *-node-worker; do
+            test -f "$d/package.json" || continue
+            test -f "$d/package-lock.json"
+          done
+
+      - name: Install locked Node worker dependencies（安装锁定的 Node 依赖）
+        run: |
+          set -eu
+          for d in node-worker *-node-worker; do
+            test -f "$d/package.json" || continue
+            npm --prefix "$d" ci --ignore-scripts --no-audit --no-fund
+          done
+
+      - name: All Node workers syntax + tests（全部 Node 执行器语法与测试）
+        run: |
+          set -eu
+          for d in node-worker *-node-worker; do
+            test -f "$d/package.json" || continue
+            echo "== $d =="
+            npm --prefix "$d" run check
+            npm --prefix "$d" test
+          done
+
+      - name: Deterministic release bundle（确定性发布包）
+        run: |
+          python build_release_bundle.py --output /tmp/ai-team-v1-a.zip
+          python build_release_bundle.py --output /tmp/ai-team-v1-b.zip
+          python build_release_bundle.py --output /tmp/ai-team-v1-a.zip --verify
+          test "$(sha256sum /tmp/ai-team-v1-a.zip | cut -d' ' -f1)" = "$(sha256sum /tmp/ai-team-v1-b.zip | cut -d' ' -f1)"

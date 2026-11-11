@@ -1,0 +1,1 @@
+{"name":"ai-team-compatible-node-worker","private":true,"type":"module","scripts":{"check":"node --check src/index.js","test":"node --test test/*.test.js"}}

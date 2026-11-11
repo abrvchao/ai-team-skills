@@ -1,0 +1,11 @@
+{
+  "name": "@ai-team/dsh-node-worker",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/readiness.js",
+    "test": "node --test"
+  }
+}

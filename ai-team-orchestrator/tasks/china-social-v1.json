@@ -1,0 +1,173 @@
+{
+  "version": "1.0",
+  "program": "content-opportunity-radar/china-social-v1",
+  "supervisor": "chatgpt",
+  "rules": {
+    "context_mode": "delta-only",
+    "full_logs": false,
+    "architecture_changes": "supervisor-only",
+    "truth": "queued/acknowledged must never be reported as running",
+    "artifact_truth": "completed tasks require a tracked result.artifact; queued/blocked tasks must not already have a tracked declared artifact"
+  },
+  "tasks": [
+    {
+      "task_id": "CN-DSH-001",
+      "agent_id": "dsh",
+      "status": "completed_artifact_present",
+      "objective": "Validate Zhihu official/open data acquisition paths for Radar and produce a field/limits/sample report.",
+      "context": {
+        "repo": "abrvchao/ai-team-skills",
+        "base_ref": "main",
+        "files": [
+          "content-opportunity-radar/core.py",
+          "content-opportunity-radar/pipeline.py"
+        ],
+        "prior_artifacts": []
+      },
+      "constraints": [
+        "Prefer official/documented API or authorized access.",
+        "Do not implement cookie/browser scraping as the production path.",
+        "Do not modify Opportunity Score architecture."
+      ],
+      "outputs": [
+        "docs/research/china-social/zhihu-acquisition.md",
+        "small sanitized sample fixture if legally/technically available"
+      ],
+      "acceptance": [
+        "documents auth method",
+        "documents available search/hot/question fields",
+        "documents quotas/rate limits if known",
+        "marks every acquisition path official/public-web/licensed/experimental",
+        "includes provenance recommendation"
+      ],
+      "output_budget": {
+        "summary_lines": 10,
+        "log_excerpt_lines": 20
+      },
+      "result": {
+        "artifact": "docs/research/china-social/zhihu-acquisition.md",
+        "evidence_time": "2026-09-27T02:22:00Z",
+        "conclusion": "conditional_go",
+        "note": "Artifact exists and records a completed acquisition-path validation; valid provider credentials remain required before production data access."
+      }
+    },
+    {
+      "task_id": "CN-DSH-002",
+      "agent_id": "dsh",
+      "status": "completed_artifact_present",
+      "objective": "Validate Weibo official/open acquisition paths for search, trends, and hot topics.",
+      "context": {
+        "repo": "abrvchao/ai-team-skills",
+        "base_ref": "main",
+        "files": [
+          "content-opportunity-radar/core.py",
+          "content-opportunity-radar/pipeline.py"
+        ]
+      },
+      "constraints": [
+        "Prefer official developer/CLI/API paths.",
+        "No production cookie scraping.",
+        "Return evidence about auth, limits and usable fields."
+      ],
+      "outputs": [
+        "docs/research/china-social/weibo-acquisition.md"
+      ],
+      "acceptance": [
+        "search/trend/hot-list capability matrix",
+        "auth and quota notes",
+        "sample normalized RawEvent mapping",
+        "fallback recommendation"
+      ],
+      "output_budget": {
+        "summary_lines": 10,
+        "log_excerpt_lines": 20
+      },
+      "result": {
+        "artifact": "docs/research/china-social/weibo-acquisition.md",
+        "source_commit": "9b43bc4",
+        "promoted_commit": "7ab8375",
+        "conclusion": "defer_until_commercial_access",
+        "note": "Validated acquisition paths show production search/trend/hot-list access depends on Weibo commercial data API or licensed data; public-web/cookie scraping is not a production path."
+      }
+    },
+    {
+      "task_id": "CN-DSH-003",
+      "agent_id": "dsh",
+      "status": "queued_not_started",
+      "objective": "Run a capability spike for Douyin search/data APIs and determine which permissions are actually obtainable.",
+      "context": {
+        "repo": "abrvchao/ai-team-skills",
+        "base_ref": "main"
+      },
+      "constraints": [
+        "This is a capability validation, not a production scraper.",
+        "Do not build browser automation as fallback."
+      ],
+      "outputs": [
+        "docs/research/china-social/douyin-capability.md"
+      ],
+      "acceptance": [
+        "documents scopes/endpoints",
+        "distinguishes documented from actually accessible",
+        "records quotas/approval requirements",
+        "go/no-go recommendation for official provider"
+      ],
+      "output_budget": {
+        "summary_lines": 10,
+        "log_excerpt_lines": 20
+      }
+    },
+    {
+      "task_id": "CN-DSH-004",
+      "agent_id": "dsh",
+      "status": "queued_not_started",
+      "objective": "Compare Bilibili official platform capabilities with public web endpoints for Radar use.",
+      "context": {
+        "repo": "abrvchao/ai-team-skills",
+        "base_ref": "main"
+      },
+      "constraints": [
+        "Every source must have acquisition_method and provenance classification.",
+        "Do not label public-web endpoints as official."
+      ],
+      "outputs": [
+        "docs/research/china-social/bilibili-acquisition.md"
+      ],
+      "acceptance": [
+        "official-vs-public-web matrix",
+        "stability/risk notes",
+        "normalized event field proposal"
+      ],
+      "output_budget": {
+        "summary_lines": 10,
+        "log_excerpt_lines": 20
+      }
+    },
+    {
+      "task_id": "CN-GEMINI-001",
+      "agent_id": "gemini",
+      "status": "deferred",
+      "objective": "Research Xiaohongshu official/licensed/search-index data options for commercial Radar use.",
+      "constraints": [
+        "No claim that Gemini started until adapter is configured and task reaches running.",
+        "Do not recommend cookie automation as core SaaS dependency."
+      ],
+      "outputs": [
+        "docs/research/china-social/xiaohongshu-data-options.md"
+      ],
+      "acceptance": [
+        "official/open capabilities",
+        "licensed provider options where verifiable",
+        "search-index fallback",
+        "commercial/stability constraints"
+      ],
+      "output_budget": {
+        "summary_lines": 12,
+        "log_excerpt_lines": 20
+      },
+      "decision": {
+        "reason": "Gemini is now configured; this task is intentionally deferred until a licensed/contractual production path is worth validating. Browser/cookie automation remains out of scope."
+      }
+    }
+  ]
+}

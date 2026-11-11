@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abrvchao.github.io/ai-team-orchestrator/artifact.schema.json",
+  "title": "AI Team Artifact",
+  "type": "object",
+  "required": ["artifact_id", "task_id", "kind", "path", "created_at"],
+  "properties": {
+    "artifact_id": {"type": "string"},
+    "task_id": {"type": "string"},
+    "kind": {"type": "string"},
+    "path": {"type": "string"},
+    "label": {"type": "string"},
+    "metadata": {"type": "object"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
