@@ -1,0 +1,27 @@
+agents:
+  trae_agent:
+    enable_lakeview: false
+    model: doubao_model
+    max_steps: 60
+    tools:
+      - bash
+      - str_replace_based_edit_tool
+      - sequentialthinking
+      - task_done
+
+model_providers:
+  doubao:
+    api_key: ""
+    provider: doubao
+    base_url: ""
+
+models:
+  doubao_model:
+    model_provider: doubao
+    model: doubao-seed-2-1-pro-260628
+    max_tokens: 8192
+    temperature: 0.2
+    top_p: 0.8
+    top_k: 0
+    max_retries: 3
+    parallel_tool_calls: true

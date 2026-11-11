@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Content Opportunity Radar">
+  <title>SignalDesk — Content Opportunity Radar</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" role="presentation">
+            <circle cx="16" cy="16" r="11"></circle>
+            <circle cx="16" cy="16" r="5"></circle>
+            <path d="M16 16 25 9"></path>
+            <circle class="brand-ping" cx="25" cy="9" r="2.5"></circle>
+          </svg>
+        </div>
+        <div>
+          <div class="eyebrow" data-i18n="brandEyebrow">Signal Intelligence Engine</div>
+          <h1>Content Opportunity Radar</h1>
+        </div>
+      </div>
+      <form id="scope-form" class="scope-form">
+        <div class="field-group">
+          <label for="workspace-select" data-i18n="workspaceLabel">Workspace</label>
+          <div class="scope-control">
+            <select id="workspace-select" name="workspace">
+              <option value="" data-i18n="legacyWorkspace">All history (uncategorized)</option>
+            </select>
+          </div>
+          <div class="workspace-actions">
+            <button id="workspace-create" type="button"><span aria-hidden="true">＋ </span><span data-i18n="newWorkspaceButton">新建</span></button>
+            <button id="workspace-edit" type="button" data-i18n="editWorkspaceButton" disabled>编辑</button>
+          </div>
+        </div>
+        <div class="field-group scope-field">
+          <label for="scope-input" data-i18n="scopeLabel">Radar scope</label>
+          <div class="scope-control">
+            <input id="scope-input" name="scope" value="AI" autocomplete="off" maxlength="80">
+            <button type="submit" data-i18n="viewResults">View results</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label id="language-label" for="language-select" data-i18n="languageLabel">Language</label>
+          <div class="scope-control">
+            <select id="language-select" name="language">
+              <option value="zh" data-country="CN">中文</option>
+              <option value="en" data-country="US" selected>English</option>
+              <option value="ja" data-country="JP">日本語</option>
+              <option value="ko" data-country="KR">한국어</option>
+              <option value="fr" data-country="FR">Français</option>
+              <option value="de" data-country="DE">Deutsch</option>
+              <option value="es" data-country="ES">Español</option>
+              <option value="pt" data-country="BR">Português</option>
+            </select>
+          </div>
+        </div>
+        <div class="product-actions">
+          <button id="run-lite-scan" class="primary-button" type="button" data-i18n="runScan">Run Lite Scan</button>
+          <span id="scan-status" class="action-status muted" data-i18n="ready">Ready</span>
+        </div>
+      </form>
+    </header>
+
+    <dialog id="workspace-dialog" class="workspace-dialog" aria-labelledby="workspace-dialog-title">
+      <form id="workspace-editor">
+        <h3 id="workspace-dialog-title" data-i18n="newWorkspace">新建工作区</h3>
+        <label for="workspace-name" data-i18n="workspaceName">名称</label>
+        <input id="workspace-name" maxlength="120" required>
+        <label for="workspace-scope" data-i18n="workspaceScope">关注主题</label>
+        <input id="workspace-scope" maxlength="160" required>
+        <label for="workspace-language" data-i18n="workspaceLanguage">语言</label>
+        <select id="workspace-language">
+          <option value="zh">中文</option><option value="en">English</option>
+          <option value="ja">日本語</option><option value="ko">한국어</option>
+          <option value="fr">Français</option><option value="de">Deutsch</option>
+          <option value="es">Español</option><option value="pt">Português</option>
+        </select>
+        <p id="workspace-editor-error" role="alert" hidden></p>
+        <div class="workspace-dialog-actions">
+          <button id="workspace-cancel" type="button" data-i18n="cancel">取消</button>
+          <button type="submit" class="primary-button" data-i18n="saveWorkspace">保存工作区</button>
+        </div>
+      </form>
+    </dialog>
+
+    <main>
+      <section class="plain-guide panel" aria-labelledby="plain-guide-title">
+        <div class="plain-guide-heading">
+          <div>
+            <div class="eyebrow" id="plain-guide-eyebrow">先看这里 · 使用说明</div>
+            <h2 id="plain-guide-title">Radar 现在做到哪一步？</h2>
+          </div>
+          <span id="plain-guide-stage" class="status-pill neutral">R3 · 真实使用验证中</span>
+        </div>
+        <p id="plain-guide-explain">Radar 精简版功能已具备，但“准确、稳定、有用”还需要真实用户验证；下方的机会数量是扫描结果，不是开发完成率。</p>
+        <div class="plain-guide-progress" role="group" aria-label="Radar delivery checklist progress">
+          <div class="plain-guide-track"><span style="width:61.11%"></span></div>
+          <strong id="plain-guide-progress-label">开发检查项：11 / 18 已完成（61%）</strong>
+          <small id="plain-guide-progress-date">记录日期：2026-10-13 · 阶段性清单，不代表产品质量或商业成熟度</small>
+        </div>
+        <div class="plain-guide-steps">
+          <div><strong id="plain-guide-ready-title">已经可以做什么</strong><p id="plain-guide-ready">选主题 → 运行扫描 → 查看机会卡与证据 → 交接给 AI Team。</p></div>
+          <div><strong id="plain-guide-pending-title">还没完成什么</strong><p id="plain-guide-pending">真实用户可行动性、授权 GSC 数据、实验信号对照等验收尚未全部通过。</p></div>
+          <div><strong id="plain-guide-next-title">你现在怎么看</strong><p id="plain-guide-next">先看下方“优先机会”，点击感兴趣的卡片，再核对证据。来源状态只是采集健康度。</p></div>
+        </div>
+      </section>
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow" data-i18n="heroEyebrow">Top Opportunities Today</div>
+          <h2 data-i18n="heroTitle">Discover what's worth doing before deciding how to do it.</h2>
+          <p id="run-summary" class="muted" data-i18n="loadingHistory">Loading Radar history…</p>
+        </div>
+        <div class="hero-metrics" aria-label="Radar summary">
+          <div class="metric-tile">
+            <span class="metric-label" data-i18n="metricOpportunities">Opportunities</span>
+            <strong id="metric-opportunities">—</strong>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label" data-i18n="metricProviders">Providers</span>
+            <strong id="metric-providers">—</strong>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label" data-i18n="metricLastRun">Last run</span>
+            <strong id="metric-last-run">—</strong>
+          </div>
+        </div>
+      </section>
+
+      <div id="global-error" class="notice error" hidden></div>
+
+      <div class="dashboard-grid">
+        <section class="panel opportunities-panel" aria-labelledby="opportunities-title">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow" data-i18n="priorityQueue">Priority queue</div>
+              <h3 id="opportunities-title" data-i18n="topOpportunities">Top Opportunities</h3>
+            </div>
+            <span id="opportunity-status" class="status-pill neutral" data-i18n="loading">Loading</span>
+          </div>
+          <div id="opportunity-list" class="opportunity-list" aria-live="polite"></div>
+          <div id="empty-state" class="empty-state" hidden>
+            <strong data-i18n="emptyTitle">No opportunities to show yet.</strong>
+            <p data-i18n="emptyHint">Run Radar Lite first, then return here to inspect the results.</p>
+          </div>
+        </section>
+
+        <aside class="panel provider-panel" aria-labelledby="provider-title">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow" data-i18n="acquisitionHealth">Acquisition health</div>
+              <h3 id="provider-title" data-i18n="dataProviders">Data Providers</h3>
+            </div>
+          </div>
+          <div id="provider-list" class="provider-list"></div>
+        </aside>
+      </div>
+
+      <section id="detail-panel" class="panel detail-panel" hidden aria-labelledby="detail-title">
+        <div class="detail-header">
+          <div>
+            <div id="detail-rank" class="eyebrow" data-i18n="detailLabel">Opportunity detail</div>
+            <h3 id="detail-title">—</h3>
+            <p id="detail-subtitle" class="muted"></p>
+          </div>
+          <button id="close-detail" class="ghost-button" type="button" data-i18n="close">Close</button>
+        </div>
+
+        <div class="detail-layout">
+          <div class="detail-main">
+            <section>
+              <h4 data-i18n="scoreBreakdown">Score breakdown</h4>
+              <div id="component-grid" class="component-grid"></div>
+            </section>
+
+            <section>
+              <h4 data-i18n="whyNow">Why now</h4>
+              <ul id="reason-list" class="reason-list"></ul>
+            </section>
+
+            <section>
+              <div class="section-heading">
+                <h4 data-i18n="evidence">Evidence</h4>
+                <span id="evidence-count" class="muted"></span>
+              </div>
+              <div id="evidence-list" class="evidence-list"></div>
+            </section>
+          </div>
+
+          <aside class="detail-side">
+            <section>
+              <h4 data-i18n="sourceConfirmation">Source confirmation</h4>
+              <div id="source-summary" class="source-summary"></div>
+            </section>
+
+            <section>
+              <h4 data-i18n="history">History</h4>
+              <div id="history-chart" class="history-chart"></div>
+            </section>
+
+            <section id="research-section" hidden>
+              <h4 data-i18n="researchPack">Research Pack</h4>
+              <div id="research-pack" class="research-pack"></div>
+            </section>
+
+            <section>
+              <h4 data-i18n="aiTeamHandoff">AI Team Handoff</h4>
+              <button id="generate-handoff" class="primary-button" type="button" data-i18n="generateHandoff">Generate HANDOFF.json</button>
+              <p id="handoff-status" class="action-status muted" data-i18n="handoffPrompt">Select an opportunity and generate a deterministic handoff pack.</p>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/i18n.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "program_id": "china-social-source-expansion-v1",
+  "created_at": "2026-10-12",
+  "name": "Radar 数据源扩展：安卓只读证据 + 官方接口",
+  "product_boundary": "Radar Lite 已定范围不变；新增数据源分阶段验证，不把采集 PoC 当成真实用户价值验收。",
+  "stage": "P0_feasibility",
+  "overall_status": "scheduled_not_implemented",
+  "implementation_rules": [
+    "优先官方开放平台/被授权或合法许可的数据服务；分别记录已发布的 API 和实际获批的 API 权限，不混淆。",
+    "Android 仅在用户本人授权设备/账户后，读取用户主动展示的页面、允许的无敏感截图和最小化结构化内容；现有 Android Worker 只支持只读设备信息与截图，UI 自动化尚未实现。",
+    "不抓取 App 私有数据库、登录 cookie、Access Token、短信、聊天记录等，不绕过验证码、反爬虫、DRM、平台访问控制或账号风控。",
+    "任何真实平台请求须先验证授权范围、价格、请求配额与协议，默认关闭付费调用。数据记录采集时间、来源 URL/ID、获取方式、授权依据、原始证据哈希与去重键。",
+    "所有阶段须有真实测试数据/报告才提高完成率；未连安卓设备时保持 blocked_by_device，不用模拟截图冒充采集成功。",
+    "火山引擎冻结；与 Radar R3 的真实用户价值验证是两条独立进度线。"
+  ],
+  "platforms": [
+    {
+      "id": "zhihu",
+      "name": "知乎",
+      "priority": "P0",
+      "preferred_path": "official_api",
+      "official_entry": "https://developer.zhihu.com/",
+      "scope": "知乎搜索、热榜与公开问题内容；API 凭证和用量需授权且单独审核",
+      "constraint": "已有 CN-DSH-001 路径验证记录；不等于已配置可用的生产 Access Secret。",
+      "android_path": "用户授权后，只读观察指定页面；API 满足需求时优先不用设备。",
+      "previous_task_id": "CN-DSH-001",
+      "status": "api_documented_auth_unverified"
+    },
+    {
+      "id": "douyin",
+      "name": "抖音",
+      "priority": "P0",
+      "preferred_path": "official_api_with_approval",
+      "official_entry": "https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/douyin-search-capability/",
+      "scope": "视频搜索需 aweme.dy.video_search 权限；账号内容接口有独立授权范围",
+      "constraint": "公开 API 文档不等于应用已获视频搜索权限；需核实资格/配额/费用。",
+      "android_path": "获授权设备上试验可见搜索结果的只读采集，缺设备则仅完成离线解析。",
+      "previous_task_id": "CN-DSH-003",
+      "status": "api_documented_permission_unverified"
+    },
+    {
+      "id": "bilibili",
+      "name": "B站",
+      "priority": "P1",
+      "preferred_path": "official_api_authorized_creator",
+      "official_entry": "https://openhome.bilibili.com/doc",
+      "scope": "授权 UP 主稿件、公开账号资料和平台允许的数据开放能力",
+      "constraint": "官方接口主要覆盖已授权创作者；暂不视为已具备全站视频关键词搜索。",
+      "android_path": "授权屏幕证据可用于补充研究，不作为未经许可的全站抓取路径。",
+      "previous_task_id": "CN-DSH-004",
+      "status": "api_documented_access_unverified"
+    },
+    {
+      "id": "xiaohongshu",
+      "name": "小红书",
+      "priority": "P1",
+      "preferred_path": "licensed_content_provider_or_opt_in_android",
+      "official_entry": "https://openaccount.xiaohongshu.com/docs/scope",
+      "scope": "用户已授权可见的选题、笔记标题与公共互动指标（若页面允许）",
+      "constraint": "账号开放平台首期仅 basic_info；read_notes 尚处规划中，不可把 OAuth 登录接口当笔记搜索。",
+      "android_path": "用户在手机主动搜索并展示结果；仅经单独授权读取最小截图/可访问 UI 文字。",
+      "previous_task_id": "CN-GEMINI-001",
+      "status": "needs_licensed_path_or_consented_device"
+    },
+    {
+      "id": "xianyu",
+      "name": "闲鱼",
+      "priority": "P1",
+      "preferred_path": "official_authorized_seller_api_or_opt_in_android",
+      "official_entry": "https://developer.alibaba.com/docs/api.htm?apiId=49488",
+      "scope": "关键词对应的二手供需、商品标题/价格区间与供需信号，需独立来源授权",
+      "constraint": "已验货服务商 item.query 是授权商品查询；spu.search 是型号/品牌搜索，不等于全站二手商品搜索。",
+      "android_path": "用户本人展示的搜索页/商品页只读验证；必须明确账号与隐私边界。",
+      "previous_task_id": null,
+      "status": "official_market_search_not_verified"
+    }
+  ],
+  "phases": [
+    {
+      "id": "P0",
+      "window": "2026-10-12..2026-10-15",
+      "goal": "五平台官方接口/许可/费用可行性及安卓设备只读能力审查",
+      "exit_criteria": [
+        "每个平台都有官方/授权范围、API 权限和价格是否未知的明确表格",
+        "每个采集路径都有能做与不能做的边界、历史任务复用索引",
+        "不需要手机、付费 API 或实际登录也能完成离线架构与安全评审"
+      ],
+      "status": "documented_and_android_design_reviewed_no_live_auth"
+    },
+    {
+      "id": "P1",
+      "window": "2026-10-16..2026-10-21",
+      "goal": "先完成能获准的 API 适配器及统一 RawEvent 测试夹具",
+      "exit_criteria": [
+        "至少一个官方 API/许可数据通道真实获授权，或明确记录无权限无法实施",
+        "统一 RawEvent 包含 platform、source_id、captured_at、provenance、consent_scope、dedupe_key",
+        "所有测试可以离线复现，不调用未经批准的付费接口"
+      ],
+      "status": "blocked_on_P0_and_authorization"
+    },
+    {
+      "id": "P2",
+      "window": "after_android_device_authorization",
+      "goal": "安卓只读设备试验：页面证据 → 脱敏 → 结构化事件",
+      "exit_criteria": [
+        "安卓真机经用户本人 USB debugging 授权；无真机不宣布已完成",
+        "设备只读截图/可访问 UI 节点原始证据与解析事件可对应",
+        "每个平台逐个明确是否可用于实际产品；不可用则保持冻结",
+        "不自动登录、不批量模拟点击、不绕过验证码或访问 App 私有数据"
+      ],
+      "status": "waiting_for_user_device"
+    },
+    {
+      "id": "P3",
+      "window": "after_P1_and_P2",
+      "goal": "小样本来源质量比较、跨平台去重、成本和商业接入决策",
+      "exit_criteria": [
+        "真实有效/无效数据分开统计，有样本量和来源可追溯",
+        "风控、费用、准确性和删除/用户撤权后的处置规则明确",
+        "与 Radar Lite R3 原有门禁分开决定是否上线"
+      ],
+      "status": "not_started"
+    }
+  ],
+  "work_packages": [
+    {
+      "task_id": "SOC-API-001",
+      "owner": "mimo",
+      "title": "知乎、抖音、B站官方 API 权限和费用可行性证据",
+      "depends_on": [],
+      "deliverable": "docs/research/china-social/source-api-capability-20261013.md",
+      "state": "documented_only_no_live_access",
+      "bridge_task_id": "task_9aa6dd936922c6b8a33e",
+      "verified_at": "2026-10-12T18:00:00+08:00",
+      "note": "Previously timed-out submit succeeded; confirmed from Bridge tasks, not resubmitted.",
+      "evidence": "官方文档公开资料已复核；MiMo原任务失败，非模型产物，实际权限/费用/线上数据未确认",
+      "previous_failed_task_id": "task_9aa6dd936922c6b8a33e"
+    },
+    {
+      "task_id": "SOC-ANDROID-001",
+      "owner": "dsh",
+      "title": "现有只读 Android Worker 能力扩展设计及小红书/闲鱼授权采集边界",
+      "depends_on": [],
+      "deliverable": "docs/research/china-social/android-collection-feasibility-20261013.md",
+      "state": "implementation_design_verified_device_blocked",
+      "note": "DSH available=false at 18:00 CST; no task submitted.",
+      "bridge_task_id": "task_1a100a09ec8c8221204f",
+      "evidence": "独立 DSH 代码审查报告已产出；Conditional Go，设备未授权，不能实际抓取"
+    },
+    {
+      "task_id": "SOC-SCHEMA-001",
+      "owner": "qwen",
+      "title": "Radar 多平台 RawEvent 统一格式/样本测试（不动生产采集）",
+      "depends_on": [
+        "SOC-API-001"
+      ],
+      "deliverable": "docs/research/china-social/source-event-contract-20261012.md",
+      "state": "scheduled_not_dispatched"
+    },
+    {
+      "task_id": "SOC-QA-001",
+      "owner": "opencode",
+      "title": "来源权限、隐私、成本、质量独立交叉审查",
+      "depends_on": [
+        "SOC-API-001",
+        "SOC-ANDROID-001"
+      ],
+      "deliverable": "docs/research/china-social/source-compliance-review-20261012.md",
+      "state": "scheduled_not_dispatched"
+    }
+  ],
+  "device_request": "等安卓设备在身边时，用户在手机端自行确认 ADB 授权，才开始 P2；当前无需提供账号密码、Cookie 或私有数据。",
+  "source_plan_only": true
+}

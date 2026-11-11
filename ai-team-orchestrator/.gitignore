@@ -1,0 +1,6 @@
+.orchestrator/
+__pycache__/
+*.pyc
+.env
+.env.*
+.ai-team-runs/

@@ -1,0 +1,70 @@
+{
+  "version": "china-social-m2-observation-v0.1",
+  "experiment_id": "M2-CHINA-001",
+  "date": "2026-10-03",
+  "policy": {
+    "authenticated": false,
+    "cookies": false,
+    "login_automation": false,
+    "mutation": false,
+    "terms_class": "experimental_personal_research"
+  },
+  "observations": [
+    {
+      "platform": "weibo",
+      "source_url": "https://s.weibo.com/top/summary?cate=realtimehot",
+      "acquisition_method": "public_web",
+      "provenance": {"terms_class": "experimental_personal_research"},
+      "browser_task_id": "task_8cd14be0ed134dd69c04",
+      "browser_status": "failed_no_rendered_evidence",
+      "browser_dom_bytes": 0,
+      "browser_screenshot_bytes": 0,
+      "http_control": {
+        "status": 200,
+        "redirects": 1,
+        "effective_host": "passport.weibo.com",
+        "page_title": "Sina Visitor System",
+        "observed_gate": "login"
+      },
+      "outcome": "anonymous_public_web_redirects_to_visitor_login",
+      "production_eligible": false
+    },
+    {
+      "platform": "douyin",
+      "source_url": "https://www.douyin.com/hot",
+      "acquisition_method": "public_web",
+      "provenance": {"terms_class": "experimental_personal_research"},
+      "browser_task_id": "task_5332fa03d28e02d2ba98",
+      "browser_status": "failed_no_rendered_evidence",
+      "browser_dom_bytes": 0,
+      "browser_screenshot_bytes": 0,
+      "http_control": {
+        "status": 200,
+        "redirects": 0,
+        "effective_host": "www.douyin.com",
+        "body_bytes": 72914
+      },
+      "outcome": "anonymous_http_shell_reachable_but_current_headless_runtime_did_not_render_evidence",
+      "production_eligible": false
+    },
+    {
+      "platform": "xiaohongshu",
+      "source_url": "https://www.xiaohongshu.com/explore",
+      "acquisition_method": "public_web",
+      "provenance": {"terms_class": "experimental_personal_research"},
+      "browser_task_id": "task_3c29986a96a8ebac0979",
+      "browser_status": "failed_no_rendered_evidence",
+      "browser_dom_bytes": 0,
+      "browser_screenshot_bytes": 0,
+      "http_control": {
+        "status": 200,
+        "redirects": 1,
+        "effective_path": "/login",
+        "page_title": "小红书 - 你的生活兴趣社区",
+        "observed_markers": ["登录", "Forbidden"]
+      },
+      "outcome": "anonymous_public_web_redirects_to_login_boundary",
+      "production_eligible": false
+    }
+  ]
+}
