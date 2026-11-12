@@ -60,15 +60,17 @@ class TrackerAPITests(unittest.TestCase):
         self.thread.join(timeout=2)
         self.tmp.cleanup()
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, headers=None):
         conn = http.client.HTTPConnection(
             "127.0.0.1",
             self.server.server_address[1],
             timeout=5,
         )
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
-        headers = {"Content-Type": "application/json"} if body is not None else {}
-        conn.request(method, path, body=body, headers=headers)
+        request_headers = dict(headers or {})
+        if body is not None:
+            request_headers.setdefault("Content-Type", "application/json")
+        conn.request(method, path, body=body, headers=request_headers)
         response = conn.getresponse()
         data = json.loads(response.read().decode("utf-8"))
         status = response.status
@@ -112,6 +114,27 @@ class TrackerAPITests(unittest.TestCase):
         self.assertEqual(["schedule", "run"], [item[0] for item in self.actions.calls])
 
         status, _ = self.request("POST", "/v2/tick", {})
+        self.assertEqual(200, status)
+        self.assertEqual("tick", self.actions.calls[-1][0])
+
+    def test_v2_write_routes_reject_cross_site_and_simple_requests(self):
+        cases = [
+            {"Origin": "http://evil.example"},
+            {"Content-Type": "text/plain"},
+            {"Sec-Fetch-Site": "cross-site"},
+            {"Host": "evil.example"},
+        ]
+        for headers in cases:
+            with self.subTest(headers=headers):
+                status, _ = self.request("POST", "/v2/tick", {}, headers=headers)
+                self.assertEqual(403, status)
+        self.assertEqual([], self.actions.calls)
+
+    def test_v2_write_route_accepts_same_origin_json(self):
+        origin = f"http://127.0.0.1:{self.server.server_address[1]}"
+        status, _ = self.request(
+            "POST", "/v2/tick", {}, headers={"Origin": origin}
+        )
         self.assertEqual(200, status)
         self.assertEqual("tick", self.actions.calls[-1][0])
 

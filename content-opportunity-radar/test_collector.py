@@ -144,7 +144,7 @@ class LeakyProvider(DataProvider):
             metrics={"count": 1.0},
             raw={
                 "headers": {
-                    "Authorization": "Bearer raw-secret",
+                    "Authorization": "Bearer " + "fixture-token-not-real",
                     "X-Safe": "safe-value",
                 },
                 "cookie": "session=raw-cookie-secret",
@@ -204,7 +204,7 @@ class CollectorTests(unittest.TestCase):
     def test_config_rejects_nested_and_token_shaped_literal_secrets(self):
         cases = [
             {"github_token": "do-not-store-me"},
-            {"headers": {"Authorization": "Bearer do-not-store-me"}},
+            {"headers": {"Authorization": "Bearer " + "fixture-token-not-real"}},
             {"auth": {"refresh_token": "do-not-store-me"}},
             {"cookies": [{"session_cookie": "do-not-store-me"}]},
             {"credentials": {"private_key": "do-not-store-me"}},

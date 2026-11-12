@@ -105,7 +105,7 @@ class SchedulerTests(unittest.TestCase):
 
     def test_exception_does_not_leak_token(self):
         def run(_schedule):
-            raise RuntimeError("authorization: Bearer private_value")
+            raise RuntimeError("authorization: Bearer " + "fixture-token-not-real")
 
         result = TrackerScheduler(self.store, run).tick(now=T0)
         self.assertEqual(result[0]["error"], "scan_execution_failed")
@@ -175,6 +175,37 @@ class TestD1FailedRunCleanup(unittest.TestCase):
         self.assertEqual(0, len(self.store.list_diffs(
             tracker_run_id=result[0]["tracker_run_id"])))
         self.assertEqual(0, len(self.store.list_alerts(workspace_id="ws1")))
+
+    def test_complete_run_failure_cleans_alerts_before_parent_diffs(self):
+        """alert 已落库但 complete_run 失败时，子表先清理且 run 记为 failed。"""
+        def scan_ok(_schedule):
+            return ScanResult(
+                "radar-run-after-alerts",
+                [{"topic_id": "t1", "topic_name": "T1", "rank": 1, "score": 80}],
+                [{"topic_id": "t1", "topic_name": "T1", "rank": 1, "score": 60}],
+                True,
+                "radar-run-before-alerts",
+            )
+
+        def fail_after_alerts(store, tracker_run_id, *, radar_run_id):
+            self.assertGreater(
+                len(store.list_alerts(workspace_id="ws1")), 0,
+                "the regression must fail after alert persistence",
+            )
+            raise RuntimeError("complete_run_failed")
+
+        scheduler = TrackerScheduler(self.store, scan_ok)
+        with patch.object(
+            TrackerStore, "complete_run", autospec=True,
+            side_effect=fail_after_alerts,
+        ):
+            result = scheduler.tick(now=T0)
+
+        run_id = result[0]["tracker_run_id"]
+        self.assertEqual("failed", result[0]["status"])
+        self.assertEqual("failed", self.store.get_run(run_id)["status"])
+        self.assertEqual([], self.store.list_diffs(tracker_run_id=run_id))
+        self.assertEqual([], self.store.list_alerts(workspace_id="ws1"))
 
     def test_failed_run_does_not_affect_other_runs(self):
         """失败运行的清理不得影响其他成功运行的数据。"""

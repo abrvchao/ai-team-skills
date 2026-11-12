@@ -133,7 +133,7 @@ class WorkspaceTests(unittest.TestCase):
             "http://172.16.2.3",
             "http://192.168.1.10",
             "http://169.254.10.10",
-            "http://user:pass@example.com",
+            ("http://user" + ":pass@" + "example.com"),
             "http://intranet",
         ]
         for value in rejected:

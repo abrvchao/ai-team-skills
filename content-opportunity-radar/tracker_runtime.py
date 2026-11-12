@@ -137,7 +137,7 @@ class RadarTrackerRuntime:
         return schedule
 
     def run_now(self, workspace_id: str) -> dict:
-        """人工触发一次工作区扫描；仍经过原子 claim、完整性校验和失败清理。"""
+        """人工触发一次工作区扫描；不改变原有周期调度开关状态。"""
         self.initialize()
         with WorkspaceStore(
             self.database, initialize=False, read_only=True
@@ -153,6 +153,7 @@ class RadarTrackerRuntime:
                 schedule = store.create_schedule(
                     workspace_id,
                     cron_expr=DEFAULT_CRON,
+                    enabled=False,
                     next_due_at=now,
                 )
             else:
@@ -160,14 +161,21 @@ class RadarTrackerRuntime:
                     (item for item in schedules if item["enabled"]),
                     schedules[0],
                 )
-                if not schedule["enabled"]:
-                    schedule = store.set_schedule_enabled(
-                        schedule["schedule_id"], True
-                    )
+
+            # 中文说明：记录原始 enabled 状态；关闭的 schedule 只为本次 claim 临时开启。
+            restore_disabled = not bool(schedule["enabled"])
+            if restore_disabled:
+                store.set_schedule_enabled(schedule["schedule_id"], True)
+            try:
                 store.request_schedule_now(schedule["schedule_id"], now=now)
-            results = TrackerScheduler(
-                store, self.scan, top_n=self.top_n
-            ).tick(now=now)
+                results = TrackerScheduler(
+                    store, self.scan, top_n=self.top_n
+                ).tick(now=now, schedule_id=schedule["schedule_id"])
+            finally:
+                # 中文说明：无论扫描成功、失败还是抛异常，都恢复默认关闭状态。
+                if restore_disabled:
+                    store.set_schedule_enabled(schedule["schedule_id"], False)
+
         completed = any(item.get("status") == "completed" for item in results)
         return {
             "workspace_id": workspace_id,

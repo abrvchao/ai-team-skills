@@ -42,7 +42,7 @@
 - 商业接口索引页（文档修订 **2026-09-18**，oldid=16860）列出 `search/statuses/limited`、`search/statuses/historical/*`、`search/hot_word/biz` 等商业数据接口（该索引页未单列 `search/trends/name`，但该页自身为正式文档页）。
 - `2/trends` 页标题即“**获取某人的话题列表（即将废弃）**”，是**单个用户的话题列表**，不是全站热搜/趋势。
 - `2/search/topics` 标注“**访问级别：高级接口（需要授权）**”；高级接口申请页（文档修订 2013-02-26）明确“**旧版接口不再接受申请**”。
-- 商业数据 API 介绍页（文档修订 2025-05-08）说明：企业接入、**部分收费**、独立域名与服务资源，支持 REST 与订阅（推送）两种方式，联系 `businessapi@staff.sina.com.cn`。
+- 商业数据 API 介绍页（文档修订 2025-05-08）说明：企业接入、**部分收费**、独立域名与服务资源，支持 REST 与订阅（推送）两种方式，请通过官方商务入口联系。
 
 ---
 
@@ -91,7 +91,7 @@
 ### 4.2 商业数据 API（`c.api.weibo.com` / `openapi.sc.weibo.com`）
 
 - 同样走 OAuth `access_token`（商业应用）或 `source=AppKey`；匿名实测返回 `21301 auth by Null spi!`。
-- 需企业/商务接入：商业数据 API 门户 <https://openapi.sc.weibo.com/>，联系 `businessapi@staff.sina.com.cn`。
+- 需企业/商务接入：商业数据 API 门户 <https://openapi.sc.weibo.com/>，请通过官方商务入口联系。
 - 商业接口页统一标注“请求所有商业接口：**50000 次/小时/IP**”。
 - 开发者协议条款 **2.7.8**：业务范围为**数据采集、分析并服务于其他第三方**的开发者，**仅可通过微博商业数据 API**开展工作，并签订《商业数据服务合作协议》。Content Opportunity Radar 属此类，必须以商业 API 为合规基础。
 

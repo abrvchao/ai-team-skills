@@ -97,7 +97,10 @@ class RadarProductHTTPTests(unittest.TestCase):
                 conn = http.client.HTTPConnection(
                     "127.0.0.1", server.server_address[1], timeout=5
                 )
-                conn.request("POST", "/v1/lite/scan", body=b"not-json")
+                conn.request(
+                    "POST", "/v1/lite/scan", body=b"not-json",
+                    headers={"Content-Type": "application/json"},
+                )
                 response = conn.getresponse()
                 response.read()
                 self.assertEqual(response.status, 400)

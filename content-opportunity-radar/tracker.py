@@ -227,17 +227,21 @@ class TrackerStore:
             ).fetchall()
         return [_row_to_dict(row) for row in rows]
 
-    def due_schedules(self, *, now: str | None = None) -> list[dict]:
-        """返回「已启用 且 到期时间已过」的调度，按到期时间升序。"""
+    def due_schedules(
+        self, *, now: str | None = None, schedule_id: str | None = None
+    ) -> list[dict]:
+        """返回到期调度；可按 schedule_id 限定为单次人工触发的目标。"""
         moment = now or isoformat(utcnow())
-        rows = self.conn.execute(
-            """
-            SELECT * FROM tracker_schedules
-            WHERE enabled = 1 AND next_due_at IS NOT NULL AND next_due_at <= ?
-            ORDER BY next_due_at ASC, schedule_id ASC
-            """,
-            (moment,),
-        ).fetchall()
+        sql = (
+            "SELECT * FROM tracker_schedules "
+            "WHERE enabled = 1 AND next_due_at IS NOT NULL AND next_due_at <= ?"
+        )
+        params: list[Any] = [moment]
+        if schedule_id is not None:
+            sql += " AND schedule_id = ?"
+            params.append(schedule_id)
+        sql += " ORDER BY next_due_at ASC, schedule_id ASC"
+        rows = self.conn.execute(sql, params).fetchall()
         return [_row_to_dict(row) for row in rows]
 
     def set_schedule_enabled(self, schedule_id: str, enabled: bool) -> dict:

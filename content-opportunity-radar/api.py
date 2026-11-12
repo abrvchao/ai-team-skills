@@ -12,7 +12,7 @@ import logging
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse, urlsplit
 
 from read_model import OpportunityReadStore
 from tracker import TrackerStore
@@ -94,9 +94,46 @@ def create_handler(database: str, *, actions=None):
             return payload
 
         def _local_action_allowed(self) -> bool:
+            """只允许 loopback 客户端的同源 JSON 写入，阻断跨站简单请求。"""
+            def loopback_host(value: str | None) -> bool:
+                if not value:
+                    return False
+                if value.lower() == "localhost":
+                    return True
+                try:
+                    return ipaddress.ip_address(value).is_loopback
+                except ValueError:
+                    return False
+
             try:
-                return ipaddress.ip_address(self.client_address[0]).is_loopback
-            except ValueError:
+                if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                    return False
+
+                # 中文说明：Host 也必须解析为 loopback，降低 DNS rebinding 风险。
+                host_header = (self.headers.get("Host") or "").strip()
+                parsed_host = urlsplit("//" + host_header)
+                if not loopback_host(parsed_host.hostname):
+                    return False
+
+                # HTML form / text/plain 等简单请求不能触发本机写接口。
+                if self.headers.get_content_type().lower() != "application/json":
+                    return False
+
+                if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+                    return False
+
+                # 浏览器请求若携带 Origin，必须与 Host 完全同源；CLI 可不发送 Origin。
+                origin = self.headers.get("Origin")
+                if origin:
+                    parsed_origin = urlsplit(origin)
+                    if parsed_origin.scheme not in {"http", "https"}:
+                        return False
+                    if not loopback_host(parsed_origin.hostname):
+                        return False
+                    if parsed_origin.netloc.lower() != host_header.lower():
+                        return False
+                return True
+            except (TypeError, ValueError):
                 return False
 
         def _static(self, route: str) -> bool:

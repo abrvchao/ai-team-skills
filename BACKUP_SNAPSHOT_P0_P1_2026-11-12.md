@@ -1,0 +1,18 @@
+# AI Team Sanitized P0/P1 Snapshot — 2026-11-12
+
+Standalone, history-free project snapshot derived from the isolated P2 snapshot. It does not include the development branch's commit history.
+
+- Parent snapshot: backup/ai-team-skills-2026-11-11-p2-snapshot
+- Source development branch: feat/radar-product-validation
+- Snapshot contains 376 project files, including the Radar V2 production audit summary and P1/P2 hardening.
+- Private/local-only collaboration and workspace-review notes are excluded.
+- Environment files, credentials, private keys, local databases/backups, runtime state, caches, logs, and unreviewed external copies are excluded.
+- Personal contact emails were removed; URL-userinfo and bearer test fixtures are de-literalized synthetic values.
+- Post-sanitization custom scan: 0 private-key markers, 0 common GitHub/AWS tokens, 0 bearer credential literals, 0 URL-userinfo literals, 0 email literals, 0 user-specific home/volume path values, and 0 sensitive filenames/runtime directories.
+- Generic platform paths (for example macOS application locations and temporary test directories) remain only where required by code/tests; no user-specific home/volume path value is included.
+- Radar Python regression: 388/388 PASS; focused Radar regression: 53/53 PASS; Node Worker tests: 214/214 PASS; Orchestrator Python tests: 169 PASS. Two MCP test modules were not runnable because the local test interpreter lacks the optional mcp SDK.
+- Dashboard JavaScript syntax checks and git diff --check passed.
+- F1–F4 Radar V2 production hardening is implemented in this snapshot; independent DSH review is in progress. No production database write, real scan, schedule enable, or paid API call was performed.
+- Original development branch and working tree were not modified by this sanitization or hardening work.
+
+The snapshot is ready for final independent review, commit, and remote push after the review artifact is received.

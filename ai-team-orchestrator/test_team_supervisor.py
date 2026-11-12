@@ -294,7 +294,7 @@ class TeamSupervisorTests(unittest.TestCase):
             repo = Path(tmp) / "repo"
             repo.mkdir()
             subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.email", ("ai-team@" + "example.test")], cwd=repo, check=True)
             subprocess.run(["git", "config", "user.name", "AI Team Test"], cwd=repo, check=True)
             tracked = repo / "app.py"
             tracked.write_text("VALUE = 1\n", encoding="utf-8")

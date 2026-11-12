@@ -294,3 +294,16 @@ The known action-verb compound truncation risk now has concrete regression cover
 - API（接口）: 新增 /v2/health、/v2/workspaces、workspace 下的 schedules/runs/diffs/alerts 查询；POST schedule/run/tick 仅允许 localhost。
 - Verification（验证）: Radar 全量 Python 回归 /opt/homebrew/bin/python3 -m unittest discover -p 'test_*.py' -q → 381/381 PASS；新增 runtime/API/基线与低幅度告警阈值测试，测试均使用临时 SQLite 和模拟扫描，不触发真实外部采集。
 - Production gate（生产门禁）: 真实 .radar/radar.db 已先做 SQLite 一致性备份；V2 schema 已初始化，8787 服务已重启，/v2/health 已返回 ok。默认 schedule 保持关闭，首次真实采集需用户明确触发。
+
+
+### Radar V2 P1/P2 safety hardening — 2026-11-12
+
+- Stage（阶段）: **代码修复与隔离回归完成；独立 DSH 复核进行中；生产验收仍 BLOCKED（阻塞）**。
+- F1（失败回滚）: 已修复外键清理顺序。异常时先 rollback，再删除 tracker_alerts 子表，最后删除 tracker_diffs，并将 tracker_run 标记为 failed。新增“alert 已成功入库、complete_run 失败”的回归测试，验证无残留 diff/alert。
+- F2（手动运行）: run_now 改为 one-shot（单次触发）；原本关闭的 schedule 仅临时开启，并在成功、失败或异常后恢复关闭；原本已启用的 schedule 保持启用。成功/失败/保留启用状态均有测试。
+- F3（工作区隔离）: Scheduler 支持按 schedule_id 精确 claim；run_now 不再顺带执行其他 workspace 的到期任务。新增跨 workspace 负面测试。
+- F4（本机写接口）: POST 写操作现在同时校验 loopback peer、loopback Host、application/json、同源 Origin（存在时）并拒绝 Sec-Fetch-Site=cross-site；覆盖跨站 Origin、非 JSON、伪造 Host 和 Fetch Metadata 测试。
+- Verification（验证）: Radar 全量 Python 回归 **388/388 PASS**；Radar 聚焦回归 **53/53 PASS**；AI Team Node Worker 测试 **214/214 PASS**；Orchestrator Python 测试 **169/169 PASS**（另有 2 个 MCP 测试模块因当前解释器未安装 mcp SDK 而未运行，不计入通过数）；Dashboard JS 语法检查 PASS；git diff --check PASS。
+- Test environment（测试环境）: 使用 Python 3.13.1；系统默认 python3 为 3.9.6，不满足 dataclass(slots=True) 运行要求。全套 Radar 测试出现既有 sqlite ResourceWarning，但无测试失败。
+- Safety（安全）: 所有自动化测试使用临时 SQLite / mock scan；未写生产数据库、未触发真实扫描、未启用周期 schedule、未调用付费 API。
+- Remaining（剩余）: F5/F6 两项 P3 诊断/基线管理风险仍待后续处理；F7 真实生产 V2 run/diff/alert 证据缺口仍存在。独立 DSH 复核通过前不合并；生产单次扫描须经用户明确批准，周期 schedule 继续保持关闭。

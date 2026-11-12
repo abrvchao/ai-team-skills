@@ -93,6 +93,114 @@ class RadarTrackerRuntimeTests(unittest.TestCase):
             self.assertEqual("radar-run-previous", runs[0]["prev_radar_run_id"])
             self.assertEqual(1, len(store.list_diffs(workspace_id=self.workspace.workspace_id)))
             self.assertEqual(1, len(store.list_alerts(workspace_id=self.workspace.workspace_id)))
+            schedule = store.list_schedules(
+                workspace_id=self.workspace.workspace_id
+            )[0]
+            self.assertEqual(0, schedule["enabled"], "manual run must not enable recurrence")
+
+    def test_manual_run_preserves_an_already_enabled_schedule(self):
+        runtime = RadarTrackerRuntime(
+            self.db,
+            scan=lambda _: ScanResult(
+                "radar-run-enabled",
+                [{"topic_id": "topic:one", "topic_name": "Topic One", "rank": 1, "score": 80}],
+                None,
+                True,
+            ),
+        )
+        runtime.initialize()
+        with TrackerStore(self.db) as store:
+            schedule = store.list_schedules(
+                workspace_id=self.workspace.workspace_id
+            )[0]
+            store.set_schedule_enabled(schedule["schedule_id"], True)
+
+        result = runtime.run_now(self.workspace.workspace_id)
+
+        self.assertEqual("completed", result["status"])
+        with TrackerStore(self.db, initialize=False, read_only=True) as store:
+            schedule = store.list_schedules(
+                workspace_id=self.workspace.workspace_id
+            )[0]
+            self.assertEqual(1, schedule["enabled"])
+
+    def test_manual_run_restores_disabled_schedule_after_scan_failure(self):
+        runtime = RadarTrackerRuntime(
+            self.db,
+            scan=lambda _: (_ for _ in ()).throw(RuntimeError("scan_failed")),
+        )
+
+        result = runtime.run_now(self.workspace.workspace_id)
+
+        self.assertEqual("failed", result["status"])
+        with TrackerStore(self.db, initialize=False, read_only=True) as store:
+            schedule = store.list_schedules(
+                workspace_id=self.workspace.workspace_id
+            )[0]
+            self.assertEqual(0, schedule["enabled"])
+
+    def test_manual_run_restores_disabled_schedule_after_unexpected_exception(self):
+        runtime = RadarTrackerRuntime(
+            self.db,
+            scan=lambda _: ScanResult(
+                "radar-run-unexpected",
+                [{"topic_id": "topic:one", "topic_name": "Topic One", "rank": 1, "score": 80}],
+                None,
+                True,
+            ),
+        )
+        with patch(
+            "tracker_runtime.TrackerScheduler.tick",
+            side_effect=RuntimeError("unexpected_tick_failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "unexpected_tick_failure"):
+                runtime.run_now(self.workspace.workspace_id)
+
+        with TrackerStore(self.db, initialize=False, read_only=True) as store:
+            schedule = store.list_schedules(
+                workspace_id=self.workspace.workspace_id
+            )[0]
+            self.assertEqual(0, schedule["enabled"])
+
+    def test_manual_run_only_executes_the_target_schedule(self):
+        with WorkspaceStore(self.db) as workspaces:
+            other = workspaces.create(
+                name="Other Workspace",
+                scope="AI Safety",
+                language="en",
+                country="US",
+            )
+        with TrackerStore(self.db) as store:
+            other_schedule = store.create_schedule(
+                other.workspace_id,
+                enabled=True,
+                next_due_at=T0.isoformat(),
+            )
+
+        calls = []
+        def scan(schedule):
+            calls.append(schedule["workspace_id"])
+            return ScanResult(
+                f"radar-run-{schedule['workspace_id']}",
+                [{"topic_id": "topic:one", "topic_name": "Topic One", "rank": 1, "score": 80}],
+                None,
+                True,
+            )
+
+        runtime = RadarTrackerRuntime(self.db, scan=scan)
+        result = runtime.run_now(self.workspace.workspace_id)
+
+        self.assertEqual("completed", result["status"])
+        self.assertEqual([self.workspace.workspace_id], calls)
+        with TrackerStore(self.db, initialize=False, read_only=True) as store:
+            self.assertEqual([], store.list_runs(workspace_id=other.workspace_id))
+            due_ids = {
+                item["schedule_id"]
+                for item in store.due_schedules(
+                    now=datetime.now(timezone.utc).isoformat()
+                )
+            }
+            self.assertIn(other_schedule["schedule_id"], due_ids)
 
     def test_scan_uses_only_free_native_sources_and_same_workspace_baseline(self):
         baseline = report(

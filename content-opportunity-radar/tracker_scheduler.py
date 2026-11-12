@@ -136,7 +136,9 @@ class TrackerScheduler:
         self.store.conn.commit()
         return cursor.rowcount == 1
 
-    def tick(self, *, now: datetime | str) -> list[dict]:
+    def tick(
+        self, *, now: datetime | str, schedule_id: str | None = None
+    ) -> list[dict]:
         """对到期任务单次处理；失败会记录 failed，不产生 diff/alert。
 
         通过注入 scan 回调实现 V1 扫描接线。回调须返回可信完整标记和快照，
@@ -144,7 +146,8 @@ class TrackerScheduler:
         """
         moment = _utc(now).isoformat()
         results: list[dict] = []
-        for schedule in self.store.due_schedules(now=moment):
+        # 中文说明：手动 run_now 只允许命中指定 schedule，不能顺带执行其他工作区。
+        for schedule in self.store.due_schedules(now=moment, schedule_id=schedule_id):
             try:
                 next_due = next_cron_due(schedule["cron_expr"], after=moment)
             except (TypeError, ValueError):
@@ -231,13 +234,15 @@ class TrackerScheduler:
                         "previous_snapshot_missing" if str(exc) == "previous_snapshot_missing" else
                         "previous_run_mismatch" if str(exc) == "previous_run_mismatch" else
                         "scan_execution_failed")
-                # D1: 失败运行不得保留 diff/alert 副作用（仅清理本 run，不影响其他 run）。
+                # 中文说明：先回滚未提交状态，再按外键依赖顺序清理 alert 子表和 diff 父表。
+                # 这样即使 alert 已写入而 complete_run 失败，也不会留下 running run 或孤儿记录。
+                self.store.conn.rollback()
                 self.store.conn.execute(
-                    "DELETE FROM tracker_diffs WHERE tracker_run_id = ?",
+                    "DELETE FROM tracker_alerts WHERE tracker_run_id = ?",
                     (run["tracker_run_id"],),
                 )
                 self.store.conn.execute(
-                    "DELETE FROM tracker_alerts WHERE tracker_run_id = ?",
+                    "DELETE FROM tracker_diffs WHERE tracker_run_id = ?",
                     (run["tracker_run_id"],),
                 )
                 self.store.fail_run(run["tracker_run_id"], error_message=code)

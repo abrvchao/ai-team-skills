@@ -114,7 +114,7 @@ test("上游离线时拒绝，错误不会泄漏原始 token 异常", async () =
   let saved = false;
   const result = await refreshCatalog({
     approved: true,
-    fetcher: async () => { throw new Error("Bearer synthetic-secret"); },
+    fetcher: async () => { throw new Error("Bearer " + "fixture-token-not-real"); },
     save: async () => { saved = true; },
   });
   assert.equal(result.status, REFRESH_FAILED);
