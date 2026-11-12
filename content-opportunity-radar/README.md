@@ -709,3 +709,9 @@ Other R3 evidence paths（其他 R3 证据路径）:
 - `r3_gsc_validation.py` — GSC first-party validation（GSC 第一方验证）; runtime token values are never printed.
 - `r3_user_session.py` — Design Partner session（设计伙伴验证会）.
 - `r3_seed_compare.py` — native vs AIHOT experimental relevance comparison（原生 vs AIHOT 实验相关性对照）; provider promotion is never automatic.
+
+## 本机写接口安全要求
+
+Radar V2 的 POST 写接口仅供本机调用：客户端连接地址与 Host 必须为 loopback（127.0.0.1 / localhost / ::1），Host 端口必须与服务监听端口一致，Content-Type 必须为 application/json。浏览器请求若携带 Origin，必须是无路径的 HTTP 同源 Origin；Sec-Fetch-Site 只接受 same-origin 或 none。命令行客户端可以不发送 Origin，但仍必须发送 JSON。
+
+不要将本机服务通过公网反向代理、隧道或共享网关暴露；如需远程访问，应先增加独立身份认证与 CSRF 防护，而不是转发本机写接口。

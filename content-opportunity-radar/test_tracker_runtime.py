@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Event, Thread
 from unittest.mock import patch
 
 from read_model import OpportunityReadStore
@@ -37,6 +38,7 @@ class RadarTrackerRuntimeTests(unittest.TestCase):
         scan = unittest.mock.Mock()
         runtime = RadarTrackerRuntime(self.db, scan=scan)
 
+        before_initialize = datetime.now(timezone.utc).isoformat()
         health = runtime.initialize()
 
         self.assertEqual("ok", health["status"])
@@ -50,7 +52,7 @@ class RadarTrackerRuntimeTests(unittest.TestCase):
             self.assertEqual(0, schedule["enabled"])
             self.assertGreater(
                 schedule["next_due_at"],
-                T0.isoformat(),
+                before_initialize,
             )
 
     def test_manual_run_persists_tracker_run_diff_and_alert(self):
@@ -162,6 +164,51 @@ class RadarTrackerRuntimeTests(unittest.TestCase):
             )[0]
             self.assertEqual(0, schedule["enabled"])
 
+    def test_manual_run_is_serialized_with_background_tick(self):
+        entered_scan = Event()
+        release_scan = Event()
+        calls = []
+
+        def scan(_schedule):
+            calls.append(1)
+            entered_scan.set()
+            if not release_scan.wait(timeout=5):
+                raise RuntimeError("test_scan_gate_timeout")
+            return ScanResult(
+                "radar-run-background",
+                [{"topic_id": "topic:one", "topic_name": "Topic One", "rank": 1, "score": 80}],
+                None,
+                True,
+            )
+
+        runtime = RadarTrackerRuntime(self.db, scan=scan)
+        runtime.initialize()
+        now = datetime.now(timezone.utc).isoformat()
+        with TrackerStore(self.db) as store:
+            schedule = store.list_schedules(
+                workspace_id=self.workspace.workspace_id
+            )[0]
+            store.set_schedule_enabled(schedule["schedule_id"], True)
+            store.request_schedule_now(schedule["schedule_id"], now=now)
+
+        background_results = []
+        worker = Thread(
+            target=lambda: background_results.extend(runtime.tick(now=now)),
+            daemon=True,
+        )
+        worker.start()
+        self.assertTrue(entered_scan.wait(timeout=5), "background scan did not start")
+
+        manual = runtime.run_now(self.workspace.workspace_id)
+        self.assertEqual("running", manual["status"])
+        release_scan.set()
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(1, len(calls))
+        self.assertEqual("completed", background_results[0]["status"])
+        with TrackerStore(self.db, initialize=False, read_only=True) as store:
+            self.assertEqual(1, len(store.list_runs(workspace_id=self.workspace.workspace_id)))
+
     def test_manual_run_only_executes_the_target_schedule(self):
         with WorkspaceStore(self.db) as workspaces:
             other = workspaces.create(
@@ -170,11 +217,12 @@ class RadarTrackerRuntimeTests(unittest.TestCase):
                 language="en",
                 country="US",
             )
+        other_due_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
         with TrackerStore(self.db) as store:
             other_schedule = store.create_schedule(
                 other.workspace_id,
                 enabled=True,
-                next_due_at=T0.isoformat(),
+                next_due_at=other_due_at,
             )
 
         calls = []
@@ -197,7 +245,7 @@ class RadarTrackerRuntimeTests(unittest.TestCase):
             due_ids = {
                 item["schedule_id"]
                 for item in store.due_schedules(
-                    now=datetime.now(timezone.utc).isoformat()
+                    now=(datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
                 )
             }
             self.assertIn(other_schedule["schedule_id"], due_ids)

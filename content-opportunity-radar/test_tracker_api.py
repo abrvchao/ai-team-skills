@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+from email.message import Message
 import tempfile
 import threading
 import unittest
@@ -117,18 +118,41 @@ class TrackerAPITests(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual("tick", self.actions.calls[-1][0])
 
-    def test_v2_write_routes_reject_cross_site_and_simple_requests(self):
+    def test_v2_write_routes_reject_cross_site_and_malformed_origins(self):
+        port = self.server.server_address[1]
+        other_port = (port % 65535) + 1
         cases = [
             {"Origin": "http://evil.example"},
+            {"Origin": "null"},
+            {"Origin": f"https://127.0.0.1:{port}"},
+            {"Origin": f"http://127.0.0.1:{port}/unexpected-path"},
+            {"Origin": f"http://127.0.0.1:{other_port}"},
             {"Content-Type": "text/plain"},
+            {"Content-Type": "application/x-www-form-urlencoded"},
+            {"Content-Type": "multipart/form-data; boundary=demo"},
             {"Sec-Fetch-Site": "cross-site"},
+            {"Sec-Fetch-Site": "same-site"},
             {"Host": "evil.example"},
+            {"Host": f"127.0.0.1:{other_port}"},
+            {"Host": ""},
         ]
         for headers in cases:
             with self.subTest(headers=headers):
                 status, _ = self.request("POST", "/v2/tick", {}, headers=headers)
                 self.assertEqual(403, status)
         self.assertEqual([], self.actions.calls)
+
+    def test_v2_write_guard_rejects_non_loopback_peer(self):
+        handler_class = self.server.RequestHandlerClass
+        handler = handler_class.__new__(handler_class)
+        handler.client_address = ("192.0.2.10", 12345)
+        handler.server = self.server
+        handler.headers = Message()
+        host = f"127.0.0.1:{self.server.server_address[1]}"
+        handler.headers["Host"] = host
+        handler.headers["Content-Type"] = "application/json"
+        handler.headers["Origin"] = f"http://{host}"
+        self.assertFalse(handler._local_action_allowed())
 
     def test_v2_write_route_accepts_same_origin_json(self):
         origin = f"http://127.0.0.1:{self.server.server_address[1]}"

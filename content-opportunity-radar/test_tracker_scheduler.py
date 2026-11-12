@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,13 +106,17 @@ class SchedulerTests(unittest.TestCase):
         self.assertIsNone(self.store.last_completed_radar_run("ws1"))
 
     def test_exception_does_not_leak_token(self):
+        fixture_token = "fixture-token-not-real"
+
         def run(_schedule):
-            raise RuntimeError("authorization: Bearer " + "fixture-token-not-real")
+            raise RuntimeError("authorization: Bearer " + fixture_token)
 
         result = TrackerScheduler(self.store, run).tick(now=T0)
         self.assertEqual(result[0]["error"], "scan_execution_failed")
         runs = self.store.list_runs()
-        self.assertNotIn("private_value", str(runs))
+        self.assertNotIn(fixture_token, str(result))
+        self.assertNotIn(fixture_token, str(runs))
+        self.assertNotIn("authorization: Bearer", str(runs))
         self.assertEqual(runs[0]["status"], "failed")
 
     def test_missing_previous_snapshot_must_fail(self):
@@ -205,6 +211,32 @@ class TestD1FailedRunCleanup(unittest.TestCase):
         self.assertEqual("failed", result[0]["status"])
         self.assertEqual("failed", self.store.get_run(run_id)["status"])
         self.assertEqual([], self.store.list_diffs(tracker_run_id=run_id))
+        self.assertEqual([], self.store.list_alerts(workspace_id="ws1"))
+
+    def test_keyboard_interrupt_cleans_persisted_alerts_then_propagates(self):
+        def scan_ok(_schedule):
+            return ScanResult(
+                "radar-run-keyboard",
+                [{"topic_id": "t1", "topic_name": "T1", "rank": 1, "score": 80}],
+                [{"topic_id": "t1", "topic_name": "T1", "rank": 1, "score": 60}],
+                True,
+                "radar-run-previous",
+            )
+
+        def interrupt_after_alerts(store, tracker_run_id, *, radar_run_id):
+            self.assertGreater(len(store.list_alerts(workspace_id="ws1")), 0)
+            raise KeyboardInterrupt()
+
+        with patch.object(
+            TrackerStore, "complete_run", autospec=True,
+            side_effect=interrupt_after_alerts,
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                TrackerScheduler(self.store, scan_ok).tick(now=T0)
+
+        run = self.store.list_runs()[0]
+        self.assertEqual("failed", run["status"])
+        self.assertEqual([], self.store.list_diffs(tracker_run_id=run["tracker_run_id"]))
         self.assertEqual([], self.store.list_alerts(workspace_id="ws1"))
 
     def test_failed_run_does_not_affect_other_runs(self):
@@ -400,7 +432,7 @@ class TestD4IdempotentTick(unittest.TestCase):
 
 
 class TestD4ConcurrentClaim(unittest.TestCase):
-    """D4 回归：双调度器并发 claim 同一 schedule，仅一人有效。"""
+    """D4 回归：两个线程同时 claim 同一 schedule，仅一人有效。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -410,49 +442,48 @@ class TestD4ConcurrentClaim(unittest.TestCase):
         conn.execute("INSERT INTO workspaces VALUES ('ws1')")
         conn.commit()
         conn.close()
-        # 两个独立的 TrackerStore 连接，模拟两个进程/worker
-        self.store_a = TrackerStore(self.db)
-        self.store_b = TrackerStore(self.db)
-        self.store_a.create_schedule("ws1", next_due_at=T0)
+        with TrackerStore(self.db) as store:
+            store.create_schedule("ws1", next_due_at=T0)
 
     def tearDown(self):
-        self.store_a.close()
-        self.store_b.close()
         self.tmp.cleanup()
 
     def test_two_schedulers_same_schedule_only_one_wins(self):
-        """两个调度器同时抢占同一 schedule，恰好一个成功执行。"""
-        calls_a = []
-        calls_b = []
+        barrier = Barrier(2)
+        calls = []
+        original_claim = TrackerStore.claim_and_start_run
 
-        def scan_a(_schedule):
-            calls_a.append(1)
+        def synchronized_claim(store, schedule, **kwargs):
+            # 两个线程都先读到同一条到期 schedule，再同时竞争 SQL claim。
+            barrier.wait(timeout=5)
+            return original_claim(store, schedule, **kwargs)
+
+        def scan(_schedule):
+            calls.append(1)
             return ScanResult(
-                "radar-run-a", [{"topic_id": "t1", "topic_name": "T1",
-                                 "rank": 1, "score": 80}],
-                None, True,
+                "radar-run-concurrent",
+                [{"topic_id": "t1", "topic_name": "T1", "rank": 1, "score": 80}],
+                None,
+                True,
             )
 
-        def scan_b(_schedule):
-            calls_b.append(1)
-            return ScanResult(
-                "radar-run-b", [{"topic_id": "t2", "topic_name": "T2",
-                                 "rank": 1, "score": 70}],
-                None, True,
-            )
+        def run_tick():
+            with TrackerStore(self.db) as store:
+                return TrackerScheduler(store, scan).tick(now=T0)
 
-        sched_a = TrackerScheduler(self.store_a, scan_a)
-        sched_b = TrackerScheduler(self.store_b, scan_b)
+        with patch.object(
+            TrackerStore, "claim_and_start_run", new=synchronized_claim
+        ):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(run_tick) for _ in range(2)]
+                results = [future.result(timeout=10) for future in futures]
 
-        # 两个调度器在同一时间点尝试 tick
-        r_a = sched_a.tick(now=T0)
-        r_b = sched_b.tick(now=T0)
-
-        # 恰好一个成功、一个被跳过（claim 失败）
-        total_completed = len(r_a) + len(r_b)
-        self.assertEqual(1, total_completed, "并发 claim 必须恰好一人成功")
-        # scan 回调只被调用一次
-        self.assertEqual(1, len(calls_a) + len(calls_b))
+        self.assertEqual(1, sum(len(result) for result in results))
+        self.assertEqual(1, len(calls))
+        with TrackerStore(self.db, initialize=False, read_only=True) as store:
+            runs = store.list_runs(workspace_id="ws1")
+            self.assertEqual(1, len(runs))
+            self.assertEqual("completed", runs[0]["status"])
 
 
 class TestD4FailedScanZeroSideEffects(unittest.TestCase):

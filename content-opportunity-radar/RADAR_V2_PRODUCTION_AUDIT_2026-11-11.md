@@ -46,7 +46,25 @@
 - F2 已修复：run_now 只执行一次；原本 disabled 的 schedule 在成功/失败/异常后恢复 disabled；已启用的 schedule 不被关闭。
 - F3 已修复：scheduler 支持 schedule_id 精确过滤，手动运行不再执行其他工作区的 due schedule。
 - F4 已修复：写接口增加 loopback Host、JSON Content-Type、同源 Origin（存在时）和 Sec-Fetch-Site 检查；跨站/非 JSON/伪造 Host 测试均拒绝。
-- Radar 全量 Python 回归：**388/388 PASS**；聚焦回归：**53/53 PASS**；Node Worker：**214/214 PASS**；Orchestrator Python：**169/169 PASS**，另有 2 个 MCP 测试模块因环境缺少 mcp SDK 未运行。
+- Radar 全量 Python 回归：**393/393 PASS**；聚焦回归：**67/67 PASS**；Node Worker：**214/214 PASS**；Orchestrator Python：**169/169 PASS**，另有 2 个 MCP 测试模块因环境缺少 mcp SDK 未运行。
 - 自动化测试均使用临时 SQLite 和模拟扫描；未写生产数据库、未执行真实扫描、未启用周期 schedule、未调用付费 API。
+- 另完成一次隔离真实数据 smoke：使用临时 SQLite 和免费公开源，限制为 3 个候选、每候选 2 条深扫，连续两次 run 均 completed；共 2 tracker_runs、3 diffs、0 alerts，第二次正确关联第一次基线，schedule 仍为 disabled。该 smoke 不是生产数据库验收。
+- 实测 GDELT 当前不可达；原 25 秒超时会随候选数重复串行等待，已将单次 GDELT 请求超时改为 5 秒并增加降级测试。其他免费源可继续提供数据；GDELT 不可用时应明确显示 degraded。
 
 **当前判定：代码级 F1–F4 修复待独立 DSH 复核；生产验收仍 BLOCKED。** F5/F6 作为 P3 后续项保留，F7 仍需在用户明确批准后做一次受控单次生产扫描，并至少有第二次成功 run 才能验证真实 diff/alert。不得把测试通过表述为生产闭环通过。
+
+
+## DSH 第一轮复核后的修复
+
+第一轮独立 DSH 报告对顺序执行的 F1–F4 给出 scoped ACCEPT，但明确指出 run_now 与后台 tick 的 P2 并发竞态，以及若干 P3 测试/清理缺口。该报告保留为历史证据，不能视为最终版本验收。
+
+已完成：
+- SQLite 同事务原子 claim + running-run 插入；request_schedule_now 检查 workspace 活跃 run；手动运行不再临时启用 schedule，避免重复触发和崩溃后遗留 enabled 状态。
+- 失败清理使用单事务，并在 KeyboardInterrupt/SystemExit 后清理再传播。
+- 令牌脱敏测试改为断言真实合成 fixture；并发 claim 测试改为双线程 barrier；时间测试改为相对时钟。
+- API Host 端口与监听端口匹配；Origin 仅允许无路径 HTTP 同源；Fetch Metadata 仅允许 same-origin/none；新增负面矩阵并记录 CLI JSON 调用约定。
+- GDELT timeout 25s → 5s，新增降级测试。
+
+最新验证：Radar 393/393、聚焦 67/67、Node Worker 214/214、Orchestrator Python 169 passed（2 个 MCP 模块因可选 SDK 缺失未执行）。隔离真实源 smoke 连续两次 completed，2 tracker runs、3 diffs、0 alerts，第二次关联首轮基线，schedule 始终 disabled。
+
+**状态：等待 DSH 第二轮复核；生产验收仍 BLOCKED。** 目前没有生产数据库写入、生产扫描或周期 schedule enable。

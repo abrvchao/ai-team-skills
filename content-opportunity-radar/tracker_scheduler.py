@@ -121,23 +121,12 @@ class TrackerScheduler:
         self.scan = scan
         self.top_n = top_n
 
-    def _claim(self, schedule: dict, *, now: str, next_due: str) -> bool:
-        """使用条件 UPDATE 原子抢占；同一 schedule 本轮只触发一次。"""
-        cursor = self.store.conn.execute(
-            """
-            UPDATE tracker_schedules
-            SET last_run_at = ?, next_due_at = ?, updated_at = ?
-            WHERE schedule_id = ? AND enabled = 1
-              AND next_due_at = ? AND next_due_at <= ?
-            """,
-            (schedule["next_due_at"], next_due, now, schedule["schedule_id"],
-             schedule["next_due_at"], now),
-        )
-        self.store.conn.commit()
-        return cursor.rowcount == 1
-
     def tick(
-        self, *, now: datetime | str, schedule_id: str | None = None
+        self,
+        *,
+        now: datetime | str,
+        schedule_id: str | None = None,
+        include_disabled: bool = False,
     ) -> list[dict]:
         """对到期任务单次处理；失败会记录 failed，不产生 diff/alert。
 
@@ -146,8 +135,12 @@ class TrackerScheduler:
         """
         moment = _utc(now).isoformat()
         results: list[dict] = []
-        # 中文说明：手动 run_now 只允许命中指定 schedule，不能顺带执行其他工作区。
-        for schedule in self.store.due_schedules(now=moment, schedule_id=schedule_id):
+        # 中文说明：人工单次运行可包含 disabled schedule；仍严格限定目标 schedule_id。
+        for schedule in self.store.due_schedules(
+            now=moment,
+            schedule_id=schedule_id,
+            include_disabled=include_disabled,
+        ):
             try:
                 next_due = next_cron_due(schedule["cron_expr"], after=moment)
             except (TypeError, ValueError):
@@ -155,15 +148,16 @@ class TrackerScheduler:
                 results.append({"schedule_id": schedule["schedule_id"],
                                 "status": "invalid_schedule"})
                 continue
-            if not self._claim(schedule, now=moment, next_due=next_due):
-                continue
-            previous_id = self.store.last_completed_radar_run(schedule["workspace_id"])
-            run = self.store.start_run(
-                schedule_id=schedule["schedule_id"],
-                workspace_id=schedule["workspace_id"],
-                scheduled_at=schedule["next_due_at"],
-                prev_radar_run_id=previous_id,
+            # 中文说明：claim 与创建 running run 在同一事务中提交，消除后台/手动抢占窗口。
+            run = self.store.claim_and_start_run(
+                schedule,
+                now=moment,
+                next_due=next_due,
+                include_disabled=include_disabled,
             )
+            if run is None:
+                continue
+            previous_id = run["prev_radar_run_id"]
             try:
                 # 中文说明：把 V2 已确认的前序 run 交给扫描适配器，禁止它自行挑选其他工作区历史。
                 scan_context = {**schedule, "previous_radar_run_id": previous_id}
@@ -227,25 +221,30 @@ class TrackerScheduler:
                                 "tracker_run_id": run["tracker_run_id"],
                                 "status": "completed", "diff_count": count,
                                 "alert_count": alert_count})
-            except Exception as exc:
+            except BaseException as exc:
                 # 只存错误类型/类别，防止第三方错误包含 Key、Bearer 等敏感文本。
                 code = ("scan_incomplete" if str(exc) == "scan_incomplete" else
                         "scan_empty_or_missing_run" if str(exc) == "scan_empty_or_missing_run" else
                         "previous_snapshot_missing" if str(exc) == "previous_snapshot_missing" else
                         "previous_run_mismatch" if str(exc) == "previous_run_mismatch" else
                         "scan_execution_failed")
-                # 中文说明：先回滚未提交状态，再按外键依赖顺序清理 alert 子表和 diff 父表。
-                # 这样即使 alert 已写入而 complete_run 失败，也不会留下 running run 或孤儿记录。
+                # 中文说明：rollback 后用一个事务清理 alert/diff 并标记 failed，外键顺序为子表优先。
                 self.store.conn.rollback()
-                self.store.conn.execute(
-                    "DELETE FROM tracker_alerts WHERE tracker_run_id = ?",
-                    (run["tracker_run_id"],),
-                )
-                self.store.conn.execute(
-                    "DELETE FROM tracker_diffs WHERE tracker_run_id = ?",
-                    (run["tracker_run_id"],),
-                )
-                self.store.fail_run(run["tracker_run_id"], error_message=code)
+                with self.store.conn:
+                    self.store.conn.execute(
+                        "DELETE FROM tracker_alerts WHERE tracker_run_id = ?",
+                        (run["tracker_run_id"],),
+                    )
+                    self.store.conn.execute(
+                        "DELETE FROM tracker_diffs WHERE tracker_run_id = ?",
+                        (run["tracker_run_id"],),
+                    )
+                    self.store.fail_run(
+                        run["tracker_run_id"], error_message=code, commit=False
+                    )
+                # KeyboardInterrupt/SystemExit 也完成清理，但必须继续向上传播。
+                if not isinstance(exc, Exception):
+                    raise
                 results.append({"schedule_id": schedule["schedule_id"],
                                 "tracker_run_id": run["tracker_run_id"],
                                 "status": "failed", "error": code})

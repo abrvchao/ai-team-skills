@@ -114,19 +114,30 @@ def create_handler(database: str, *, actions=None):
                 parsed_host = urlsplit("//" + host_header)
                 if not loopback_host(parsed_host.hostname):
                     return False
+                host_port = parsed_host.port or 80
+                if host_port != int(self.server.server_address[1]):
+                    return False
 
-                # HTML form / text/plain 等简单请求不能触发本机写接口。
+                # HTML form / text/plain / form-urlencoded 等简单请求不能触发本机写接口。
                 if self.headers.get_content_type().lower() != "application/json":
                     return False
 
-                if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+                fetch_site = (self.headers.get("Sec-Fetch-Site") or "").lower()
+                if fetch_site and fetch_site not in {"same-origin", "none"}:
                     return False
 
-                # 浏览器请求若携带 Origin，必须与 Host 完全同源；CLI 可不发送 Origin。
+                # 浏览器 Origin 是 serialized origin：仅允许 HTTP loopback，且不得带 path/query。
+                # CLI 可不发送 Origin，但必须发送 application/json。
                 origin = self.headers.get("Origin")
                 if origin:
                     parsed_origin = urlsplit(origin)
-                    if parsed_origin.scheme not in {"http", "https"}:
+                    if parsed_origin.scheme != "http":
+                        return False
+                    if parsed_origin.path:
+                        return False
+                    if parsed_origin.query or parsed_origin.fragment:
+                        return False
+                    if parsed_origin.username or parsed_origin.password:
                         return False
                     if not loopback_host(parsed_origin.hostname):
                         return False

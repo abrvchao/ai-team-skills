@@ -228,15 +228,21 @@ class TrackerStore:
         return [_row_to_dict(row) for row in rows]
 
     def due_schedules(
-        self, *, now: str | None = None, schedule_id: str | None = None
+        self,
+        *,
+        now: str | None = None,
+        schedule_id: str | None = None,
+        include_disabled: bool = False,
     ) -> list[dict]:
-        """返回到期调度；可按 schedule_id 限定为单次人工触发的目标。"""
+        """返回到期调度；人工单次触发可显式包含 disabled schedule。"""
         moment = now or isoformat(utcnow())
         sql = (
             "SELECT * FROM tracker_schedules "
-            "WHERE enabled = 1 AND next_due_at IS NOT NULL AND next_due_at <= ?"
+            "WHERE next_due_at IS NOT NULL AND next_due_at <= ?"
         )
         params: list[Any] = [moment]
+        if not include_disabled:
+            sql += " AND enabled = 1"
         if schedule_id is not None:
             sql += " AND schedule_id = ?"
             params.append(schedule_id)
@@ -277,21 +283,120 @@ class TrackerStore:
         self.conn.commit()
         return self.get_schedule(schedule_id)
 
-    def request_schedule_now(self, schedule_id: str, *, now: str | None = None) -> dict:
-        """把一次人工触发排到当前时刻；仍由 tick 的原子 claim 保证单次执行。"""
+    def request_schedule_now(
+        self, schedule_id: str, *, now: str | None = None
+    ) -> dict | None:
+        """请求一次人工运行；不改变 enabled，且不覆盖工作区正在执行的 run。"""
         moment = now or isoformat(utcnow())
-        cursor = self.conn.execute(
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                UPDATE tracker_schedules
+                SET next_due_at = ?, updated_at = ?
+                WHERE schedule_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM tracker_runs
+                      WHERE workspace_id = (
+                          SELECT workspace_id FROM tracker_schedules
+                          WHERE schedule_id = ?
+                      ) AND status = ?
+                  )
+                """,
+                (moment, moment, schedule_id, schedule_id, RUN_STATUS_RUNNING),
+            )
+            if cursor.rowcount == 0:
+                exists = self.conn.execute(
+                    "SELECT 1 FROM tracker_schedules WHERE schedule_id = ?",
+                    (schedule_id,),
+                ).fetchone()
+                if exists is None:
+                    raise KeyError(f"unknown schedule_id: {schedule_id}")
+                return None
+            return self.get_schedule(schedule_id)
+
+    def claim_and_start_run(
+        self,
+        schedule: Mapping[str, Any],
+        *,
+        now: str,
+        next_due: str,
+        include_disabled: bool = False,
+    ) -> dict | None:
+        """在同一事务中原子 claim 并登记 running run，防止 claim/start 之间的竞态。"""
+        schedule_id = str(schedule["schedule_id"])
+        workspace_id = str(schedule["workspace_id"])
+        scheduled_at = str(schedule["next_due_at"])
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                UPDATE tracker_schedules
+                SET last_run_at = ?, next_due_at = ?, updated_at = ?
+                WHERE schedule_id = ?
+                  AND next_due_at = ? AND next_due_at <= ?
+                  AND (enabled = 1 OR ? = 1)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM tracker_runs
+                      WHERE workspace_id = ? AND status = ?
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM tracker_runs
+                      WHERE schedule_id = ? AND scheduled_at = ?
+                  )
+                """,
+                (
+                    scheduled_at, next_due, now, schedule_id,
+                    scheduled_at, now, 1 if include_disabled else 0,
+                    workspace_id, RUN_STATUS_RUNNING, schedule_id, scheduled_at,
+                ),
+            )
+            if cursor.rowcount != 1:
+                return None
+
+            previous_id = self.last_completed_radar_run(workspace_id)
+            tracker_run_id = stable_id("tracker-run", schedule_id, scheduled_at)
+            self.conn.execute(
+                """
+                INSERT INTO tracker_runs
+                    (tracker_run_id, schedule_id, workspace_id, radar_run_id,
+                     scheduled_at, started_at, finished_at, status,
+                     error_message, prev_radar_run_id)
+                VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, NULL, ?)
+                ON CONFLICT(tracker_run_id) DO NOTHING
+                """,
+                (
+                    tracker_run_id, schedule_id, workspace_id, scheduled_at,
+                    now, RUN_STATUS_RUNNING, previous_id,
+                ),
+            )
+            row = self.conn.execute(
+                "SELECT * FROM tracker_runs WHERE tracker_run_id = ?",
+                (tracker_run_id,),
+            ).fetchone()
+            return _row_to_dict(row) if row else None
+
+    def active_run_for_workspace(self, workspace_id: str) -> dict | None:
+        row = self.conn.execute(
             """
-            UPDATE tracker_schedules
-            SET next_due_at = ?, updated_at = ?
-            WHERE schedule_id = ? AND enabled = 1
+            SELECT * FROM tracker_runs
+            WHERE workspace_id = ? AND status = ?
+            ORDER BY started_at DESC, tracker_run_id DESC
+            LIMIT 1
             """,
-            (moment, moment, schedule_id),
-        )
-        if cursor.rowcount != 1:
-            raise KeyError(f"unknown enabled schedule_id: {schedule_id}")
-        self.conn.commit()
-        return self.get_schedule(schedule_id)
+            (workspace_id, RUN_STATUS_RUNNING),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+    def latest_run_for_workspace(self, workspace_id: str) -> dict | None:
+        row = self.conn.execute(
+            """
+            SELECT * FROM tracker_runs
+            WHERE workspace_id = ?
+            ORDER BY started_at DESC, tracker_run_id DESC
+            LIMIT 1
+            """,
+            (workspace_id,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
 
     # ── tracker_runs（追踪执行记录）─────────────────────────────────────────
 
@@ -363,7 +468,9 @@ class TrackerStore:
         self.conn.commit()
         return self.get_run(tracker_run_id)
 
-    def fail_run(self, tracker_run_id: str, *, error_message: str) -> dict:
+    def fail_run(
+        self, tracker_run_id: str, *, error_message: str, commit: bool = True
+    ) -> dict:
         """标记执行失败，错误以结构化 JSON 文本记录（不吞异常）。"""
         payload = error_message
         if not isinstance(error_message, str):
@@ -378,7 +485,8 @@ class TrackerStore:
         )
         if cursor.rowcount == 0:
             raise KeyError(f"unknown tracker_run_id: {tracker_run_id}")
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return self.get_run(tracker_run_id)
 
     def get_run(self, tracker_run_id: str) -> dict:

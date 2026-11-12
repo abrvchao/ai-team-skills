@@ -137,7 +137,7 @@ class RadarTrackerRuntime:
         return schedule
 
     def run_now(self, workspace_id: str) -> dict:
-        """人工触发一次工作区扫描；不改变原有周期调度开关状态。"""
+        """人工触发一次工作区扫描；不切换 enabled，并与后台 run 原子互斥。"""
         self.initialize()
         with WorkspaceStore(
             self.database, initialize=False, read_only=True
@@ -162,26 +162,65 @@ class RadarTrackerRuntime:
                     schedules[0],
                 )
 
-            # 中文说明：记录原始 enabled 状态；关闭的 schedule 只为本次 claim 临时开启。
-            restore_disabled = not bool(schedule["enabled"])
-            if restore_disabled:
-                store.set_schedule_enabled(schedule["schedule_id"], True)
-            try:
-                store.request_schedule_now(schedule["schedule_id"], now=now)
-                results = TrackerScheduler(
-                    store, self.scan, top_n=self.top_n
-                ).tick(now=now, schedule_id=schedule["schedule_id"])
-            finally:
-                # 中文说明：无论扫描成功、失败还是抛异常，都恢复默认关闭状态。
-                if restore_disabled:
-                    store.set_schedule_enabled(schedule["schedule_id"], False)
+            requested = store.request_schedule_now(schedule["schedule_id"], now=now)
+            if requested is None:
+                # 中文说明：后台已先 claim 时，返回已有 run 状态，不再重排并触发第二次扫描。
+                existing = store.active_run_for_workspace(workspace_id)
+                if existing is None:
+                    existing = store.latest_run_for_workspace(workspace_id)
+                items = [{
+                    "schedule_id": existing["schedule_id"],
+                    "tracker_run_id": existing["tracker_run_id"],
+                    "status": existing["status"],
+                    "error": "workspace_run_in_progress",
+                }] if existing else [{
+                    "schedule_id": schedule["schedule_id"],
+                    "status": "failed",
+                    "error": "schedule_claim_conflict",
+                }]
+                status = items[0]["status"]
+                return {"workspace_id": workspace_id, "status": status, "items": items}
 
-        completed = any(item.get("status") == "completed" for item in results)
-        return {
-            "workspace_id": workspace_id,
-            "status": "completed" if completed else "failed",
-            "items": results,
-        }
+            results = TrackerScheduler(
+                store, self.scan, top_n=self.top_n
+            ).tick(
+                now=now,
+                schedule_id=schedule["schedule_id"],
+                include_disabled=True,
+            )
+            if not results:
+                # 中文说明：若另一个进程先完成原子 claim，读取该 run，而不是误报失败。
+                existing = next(
+                    (
+                        item for item in store.list_runs(workspace_id=workspace_id)
+                        if item["schedule_id"] == schedule["schedule_id"]
+                        and item["scheduled_at"] == now
+                    ),
+                    None,
+                )
+                if existing is None:
+                    existing = store.active_run_for_workspace(workspace_id)
+                if existing:
+                    results = [{
+                        "schedule_id": existing["schedule_id"],
+                        "tracker_run_id": existing["tracker_run_id"],
+                        "status": existing["status"],
+                        "error": "claimed_by_concurrent_tick",
+                    }]
+                else:
+                    results = [{
+                        "schedule_id": schedule["schedule_id"],
+                        "status": "failed",
+                        "error": "schedule_claim_conflict",
+                    }]
+
+        if any(item.get("status") == "completed" for item in results):
+            status = "completed"
+        elif any(item.get("status") == "running" for item in results):
+            status = "running"
+        else:
+            status = "failed"
+        return {"workspace_id": workspace_id, "status": status, "items": results}
 
     def tick(self, *, now=None) -> list[dict]:
         self.initialize()
@@ -211,10 +250,7 @@ class RadarTrackerRuntime:
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                with TrackerStore(self.database) as store:
-                    TrackerScheduler(
-                        store, self.scan, top_n=self.top_n
-                    ).tick(now=utcnow())
+                self.tick(now=utcnow())
             except Exception:
                 LOGGER.exception("Radar V2 tracker scheduler tick failed")
             self._stop.wait(self.poll_seconds)

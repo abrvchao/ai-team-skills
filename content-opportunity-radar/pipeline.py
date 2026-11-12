@@ -54,6 +54,7 @@ from web import WebsiteProvider, fetch_text, parse_feed
 
 
 USER_AGENT = "ContentOpportunityRadar/0.1 (+https://github.com/abrvchao/ai-team-skills)"
+GDELT_REQUEST_TIMEOUT_SECONDS = 5.0  # GDELT 是可降级源，避免逐候选 25s 串行阻塞。
 
 
 def _json_request(
@@ -401,7 +402,7 @@ class GDELTProvider(DataProvider):
         })
         url = "https://api.gdeltproject.org/api/v2/doc/doc?" + params
         try:
-            data, _ = _json_request(url, timeout=25.0)
+            data, _ = _json_request(url, timeout=GDELT_REQUEST_TIMEOUT_SECONDS)
         except Exception as exc:
             return CollectionResult(
                 self.id,

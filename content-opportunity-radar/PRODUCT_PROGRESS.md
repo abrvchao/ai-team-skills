@@ -303,7 +303,18 @@ The known action-verb compound truncation risk now has concrete regression cover
 - F2（手动运行）: run_now 改为 one-shot（单次触发）；原本关闭的 schedule 仅临时开启，并在成功、失败或异常后恢复关闭；原本已启用的 schedule 保持启用。成功/失败/保留启用状态均有测试。
 - F3（工作区隔离）: Scheduler 支持按 schedule_id 精确 claim；run_now 不再顺带执行其他 workspace 的到期任务。新增跨 workspace 负面测试。
 - F4（本机写接口）: POST 写操作现在同时校验 loopback peer、loopback Host、application/json、同源 Origin（存在时）并拒绝 Sec-Fetch-Site=cross-site；覆盖跨站 Origin、非 JSON、伪造 Host 和 Fetch Metadata 测试。
-- Verification（验证）: Radar 全量 Python 回归 **388/388 PASS**；Radar 聚焦回归 **53/53 PASS**；AI Team Node Worker 测试 **214/214 PASS**；Orchestrator Python 测试 **169/169 PASS**（另有 2 个 MCP 测试模块因当前解释器未安装 mcp SDK 而未运行，不计入通过数）；Dashboard JS 语法检查 PASS；git diff --check PASS。
+- Verification（验证）: Radar 全量 Python 回归 **393/393 PASS**；Radar 聚焦回归 **67/67 PASS**；AI Team Node Worker 测试 **214/214 PASS**；Orchestrator Python 测试 **169/169 PASS**（另有 2 个 MCP 测试模块因当前解释器未安装 mcp SDK 而未运行，不计入通过数）；Dashboard JS 语法检查 PASS；git diff --check PASS。
 - Test environment（测试环境）: 使用 Python 3.13.1；系统默认 python3 为 3.9.6，不满足 dataclass(slots=True) 运行要求。全套 Radar 测试出现既有 sqlite ResourceWarning，但无测试失败。
+- Provider latency（数据源延迟）: 实测 GDELT API 在当前网络环境不可达；原 25 秒超时会在 8 个候选的串行深扫中重复等待。已将 GDELT 单次请求超时收紧到 5 秒，失败仍按 degraded（降级）处理，不阻断其他免费源。新增 2 项超时/降级回归测试。
+- Isolated live smoke（隔离真实数据冒烟）: 使用临时 SQLite、免费公开源、3 个候选/每候选 2 条深扫，连续两次真实 run 均 completed；生成 2 条 tracker_runs、3 条 diff、0 条 alert（未达到提醒阈值），第二次 run 正确关联前一次基线；schedule 两次后均保持 disabled。该结果不是生产数据库验收。
 - Safety（安全）: 所有自动化测试使用临时 SQLite / mock scan；未写生产数据库、未触发真实扫描、未启用周期 schedule、未调用付费 API。
 - Remaining（剩余）: F5/F6 两项 P3 诊断/基线管理风险仍待后续处理；F7 真实生产 V2 run/diff/alert 证据缺口仍存在。独立 DSH 复核通过前不合并；生产单次扫描须经用户明确批准，周期 schedule 继续保持关闭。
+
+
+### DSH follow-up remediation — 2026-11-12
+
+- 第一轮 DSH 独立报告已归档：F1–F4 顺序/离线场景 ACCEPT，但指出手动 run 与后台 tick 并发时仍有 P2 重复触发窗口；另有 BaseException 清理、令牌测试、F4 边界和并发测试质量问题。
+- 已处理上述问题：claim 与 running-run 插入合并为同一 SQLite 事务；手动 run 不再临时切换 schedule.enabled；运行中工作区拒绝重复排队；并发时返回已有 run；失败清理原子化并支持 BaseException 后清理；修复令牌测试断言、真实双线程竞争测试和相对时间测试；收紧 Host/Origin/Fetch Metadata 校验。
+- GDELT 请求超时已限制为 5 秒；隔离真实数据两次扫描成功（3 candidates / deep_limit=2，2 runs、3 diffs、0 alerts，第二次关联首轮基线，schedule 仍关闭）。
+- 最新回归：Radar **393/393**，聚焦 **67/67**，Node Worker **214/214**，Orchestrator Python **169 passed**（2 个 MCP 测试因可选 SDK 缺失未运行）。
+- 当前状态：代码级并发/安全修复已完成，等待 DSH 对最终修订做第二轮复核；生产验收仍 BLOCKED，生产库/周期调度未触碰。
