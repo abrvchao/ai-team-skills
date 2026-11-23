@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "ai-team-orchestrator/**"
+      - "ai-team-supervisor/**"
       - ".github/workflows/ai-team-orchestrator.yml"
   pull_request:
     paths:
       - "ai-team-orchestrator/**"
+      - "ai-team-supervisor/**"
       - ".github/workflows/ai-team-orchestrator.yml"
 
 jobs:
@@ -41,6 +43,9 @@ jobs:
 
       - name: Unit + subprocess integration tests
         run: python -m unittest discover -v
+
+      - name: Portable supervisor skill integration tests
+        run: python -m unittest discover -s ../ai-team-supervisor/tests -v
 
       - name: Node worker syntax
         run: |
