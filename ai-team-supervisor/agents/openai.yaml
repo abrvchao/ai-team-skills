@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Team 主持者"
+  short_description: "接手 AI Team 主持，核实成员和任务，组织协作、验收交付并保存交接记录"
+  default_prompt: "使用 $ai-team-supervisor 接手当前 AI Team 项目，先核实已有任务和证据，再继续完成交付。"
